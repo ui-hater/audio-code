@@ -19,7 +19,8 @@ is the dictionary next to them: short, complete and in a fixed format.
 | [input.md](input.md) | `Input` (`ctx.input`), `Key`, `Modifiers`, `RawInput` |
 | [time.md](time.md) | `Time` (`ctx.time`), `Timer`, `Cooldown`, `Interval` |
 | [physics.md](physics.md) | `World` (`ctx.physics`), `Body`, `BodyKind`, `Shape`, `BodyId`, `PhysicsEvent`, `RayHit`, `MoveResult`, `EARTH_GRAVITY` |
-| [level.md](level.md) | `World::build_level`, `Level` |
+| [vehicle.md](vehicle.md) | cars and trucks: `Body::car`, `Body::truck`, `Vehicle`, `ctx.drive`, `ctx.horn`, `ctx.start_engine`, `ctx.stop_engine`, `World::vehicle`, `weight`, `speed`, `crashed`, `gear_changed` |
+| [level.md](level.md) |, `Level` |
 | [ui.md](ui.md) | `Ui` (`ctx.ui`), `Menu`, `MenuItem`, `ItemKind`, `Message`, `Confirm`, `TextInput`, `Value`, `UiEvent`, `UiSound`, `UiSounds`, `Widget`, `Status`, `UiContext` |
 | [math.md](math.md) | `Vec2`, `Vec3`, `vec2`, `vec3`, angle and direction helpers, decibels, `math::random` |
 | [storage.md](storage.md) | `Storage` (`ctx.storage`) |
@@ -109,6 +110,7 @@ Where to find a function by name:
 | `pressed`, `held`, `released`, `repeating`, `axis`, `movement`, `movement_3d`, `text`, `modifiers`, `raw` | [input.md](input.md) |
 | `delta`, `elapsed`, `set_scale`, `pause`, `after`, `every`, `fired`, `Timer`, `Cooldown`, `Interval` | [time.md](time.md) |
 | `add`, `remove`, `move_by`, `move_forward`, `strafe`, `move_up`, `turn`, `tilt`, `jump`, `raycast`, `entered_tag`, `landed`, `describe`, `Body::*` | [physics.md](physics.md) |
+| `Body::car`, `Body::truck`, `Vehicle::*`, `drive`, `horn`, `start_engine`, `stop_engine`, `vehicle`, `vehicle_mut`, `weight`, `crashed`, `gear_changed`, `speed_kmh`, `set_load`, `refuel` | [vehicle.md](vehicle.md) |
 | `build_level`, `Level::point`, `Level::points` | [level.md](level.md) |
 | `ctx.ui.open`, `message`, `confirm`, `input`, `clicked`, `changed`, `confirmed`, `submitted`, `Menu::*` | [ui.md](ui.md) |
 | `forward`, `right`, `bearing`, `describe_position`, `direction_name`, `clock_position`, `look_at`, `random::*` | [math.md](math.md) |

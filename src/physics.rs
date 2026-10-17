@@ -28,6 +28,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use glam::Vec3;
 
+use crate::vehicle::Vehicle;
+
 /// Gravity on earth: 9.81 m/s² downwards (towards -z).
 pub const EARTH_GRAVITY: Vec3 = Vec3::new(0.0, 0.0, -9.81);
 
@@ -115,9 +117,10 @@ pub struct Body {
     /// [`World::move_forward`] (so a body can fly or swim up and down) and by the listener
     /// when the body is followed.
     pub pitch: f32,
-    /// Mass in kilograms (dynamic bodies), default 1.0. Heavier bodies push lighter ones
-    /// further and lose less speed when they collide, and forces move them less. Kinematic
-    /// bodies push dynamic ones regardless of mass.
+    /// Mass (weight) in kilograms, default 1.0. For dynamic bodies: heavier bodies push
+    /// lighter ones further and lose less speed when they collide, and forces move them
+    /// less. Kinematic bodies push dynamic ones regardless of mass. For vehicles it is the
+    /// empty weight, see [`Body::vehicle`].
     pub mass: f32,
     /// Speed limit in meters per second, e.g. a terminal velocity when falling.
     /// `f32::INFINITY` (the default) means no limit.
@@ -128,6 +131,10 @@ pub struct Body {
     /// The body this one stands on, if any. Bodies standing on a moving kinematic body
     /// (a lift, a platform) are carried along.
     pub ground: Option<BodyId>,
+    /// Makes the body a car or truck (optional, `None` for every other body). The physics
+    /// world then drives it from the vehicle's pedals and steering; see
+    /// [`crate::vehicle`]. Vehicle bodies are kinematic.
+    pub vehicle: Option<Vehicle>,
     force: Vec3,
 }
 
@@ -150,6 +157,7 @@ impl Body {
             max_speed: f32::INFINITY,
             on_ground: false,
             ground: None,
+            vehicle: None,
             force: Vec3::ZERO,
         }
     }
@@ -176,6 +184,32 @@ impl Body {
     /// [`World::entered`] / [`World::entered_tag`] to learn when a body walks in.
     pub fn sensor(position: Vec3) -> Self {
         Self::new(BodyKind::Sensor, position)
+    }
+
+    /// A car at `position`, tagged `"car"`: a kinematic body with [`Vehicle::car`], a mass
+    /// of 1300 kg and a sphere of 1 m radius. Shapes never rotate, so a sphere fits a car
+    /// facing any direction. Change the settings with [`Body::with_vehicle`] and
+    /// [`Body::with_mass`].
+    pub fn car(position: Vec3) -> Self {
+        Self::kinematic(position).with_sphere(1.0).with_mass(1300.0).with_tag("car").with_vehicle(Vehicle::car())
+    }
+
+    /// A truck at `position`, tagged `"truck"`: a kinematic body with [`Vehicle::truck`],
+    /// an empty mass of 12 t and a sphere of 1.5 m radius.
+    pub fn truck(position: Vec3) -> Self {
+        Self::kinematic(position)
+            .with_sphere(1.5)
+            .with_mass(12_000.0)
+            .with_tag("truck")
+            .with_vehicle(Vehicle::truck())
+    }
+
+    /// Makes the body a vehicle (car, truck, bus, ...) and kinematic. The weight is the
+    /// body's [`mass`](Body::mass) plus the vehicle's load.
+    pub fn with_vehicle(mut self, vehicle: Vehicle) -> Self {
+        self.kind = BodyKind::Kinematic;
+        self.vehicle = Some(vehicle);
+        self
     }
 
     /// Box shape with full width (x, east-west), depth (y, north-south) and height (z) in
@@ -331,6 +365,22 @@ pub enum PhysicsEvent {
         /// The body that left.
         body: BodyId,
     },
+    /// A vehicle drove into a solid body and lost speed.
+    Crashed {
+        /// The vehicle.
+        vehicle: BodyId,
+        /// What it hit.
+        other: BodyId,
+        /// Speed lost in the crash, in meters per second (36 km/h = 10 m/s).
+        speed: f32,
+    },
+    /// A vehicle changed gear: -1 reverse, 0 neutral (engine stopped), 1 and up forward.
+    GearChanged {
+        /// The vehicle.
+        vehicle: BodyId,
+        /// The new gear.
+        gear: i32,
+    },
 }
 
 impl PhysicsEvent {
@@ -340,6 +390,8 @@ impl PhysicsEvent {
             PhysicsEvent::CollisionStarted { a, b, .. } | PhysicsEvent::CollisionEnded { a, b } => a == id || b == id,
             PhysicsEvent::Landed { body, on, .. } => body == id || on == id,
             PhysicsEvent::Entered { sensor, body } | PhysicsEvent::Left { sensor, body } => sensor == id || body == id,
+            PhysicsEvent::Crashed { vehicle, other, .. } => vehicle == id || other == id,
+            PhysicsEvent::GearChanged { vehicle, .. } => vehicle == id,
         }
     }
 
@@ -349,6 +401,8 @@ impl PhysicsEvent {
             PhysicsEvent::CollisionStarted { a, b, .. } | PhysicsEvent::CollisionEnded { a, b } => (a, b),
             PhysicsEvent::Landed { body, on, .. } => (body, on),
             PhysicsEvent::Entered { sensor, body } | PhysicsEvent::Left { sensor, body } => (sensor, body),
+            PhysicsEvent::Crashed { vehicle, other, .. } => (vehicle, other),
+            PhysicsEvent::GearChanged { .. } => return None,
         };
         if x == id {
             Some(y)
@@ -833,10 +887,15 @@ impl World {
         let up = self.up();
         let mut touching = HashSet::new();
 
+        // Vehicles drive like characters (move_by), so walls stop them.
+        for &id in &ids {
+            self.step_vehicle(id, dt);
+        }
+
         // Kinematic bodies move first, so bodies standing on them can be carried along.
         let mut carried = Vec::new();
         for (id, body) in self.bodies.iter_mut() {
-            if body.kind == BodyKind::Kinematic {
+            if body.kind == BodyKind::Kinematic && body.vehicle.is_none() {
                 let delta = body.velocity * dt;
                 body.position += delta;
                 if delta != Vec3::ZERO {
@@ -917,6 +976,54 @@ impl World {
         for &id in &ids {
             self.update_sensors_for(id);
         }
+    }
+
+    /// Drives one vehicle body for `dt` seconds.
+    fn step_vehicle(&mut self, id: BodyId, dt: f32) {
+        let Some(body) = self.bodies.get_mut(&id) else {
+            return;
+        };
+        let Some(mut vehicle) = body.vehicle.take() else {
+            return;
+        };
+        let (turn, report) = vehicle.simulate(body.mass, dt);
+        body.facing = crate::math::normalize_angle(body.facing + turn);
+        let facing = body.facing;
+        if let Some(gear) = report.gear_changed {
+            self.events.push(PhysicsEvent::GearChanged { vehicle: id, gear });
+        }
+
+        let delta = crate::vehicle::velocity(facing, vehicle.speed()) * dt;
+        if delta != Vec3::ZERO {
+            let result = self.move_by(id, delta);
+            let along = result.moved.dot(crate::math::forward(facing));
+            vehicle.add_distance(along);
+            if result.blocked
+                && let Some((other, normal)) = self.contact_ahead(id, delta)
+            {
+                let impact = vehicle.blocked(facing, normal);
+                if impact > 0.5 {
+                    self.events.push(PhysicsEvent::Crashed { vehicle: id, other, speed: impact });
+                }
+            }
+        }
+        if let Some(body) = self.bodies.get_mut(&id) {
+            body.velocity = crate::vehicle::velocity(facing, vehicle.speed());
+            body.vehicle = Some(vehicle);
+        }
+    }
+
+    /// The solid body that `id` would run into when moved a little further along `delta`,
+    /// and the direction its surface faces.
+    fn contact_ahead(&self, id: BodyId, delta: Vec3) -> Option<(BodyId, Vec3)> {
+        let mut probe = self.bodies.get(&id)?.clone();
+        probe.position += delta.normalize_or_zero() * 0.02;
+        self.bodies
+            .iter()
+            .filter(|(other, b)| **other != id && b.is_solid())
+            .filter_map(|(other, b)| penetration(&probe, b).map(|(n, depth)| (*other, n, depth)))
+            .max_by(|a, b| a.2.total_cmp(&b.2))
+            .map(|(other, n, _)| (other, n))
     }
 
     /// Changes the velocities of `id` and `other` after they touched along normal `n`
@@ -1097,6 +1204,58 @@ impl World {
     pub fn left(&self, body: BodyId) -> Option<BodyId> {
         self.events.iter().find_map(|e| match *e {
             PhysicsEvent::Left { sensor, body: b } if b == body => Some(sensor),
+            _ => None,
+        })
+    }
+
+    // ------------------------------------------------------------- vehicles
+
+    /// The vehicle part of a body, if it is a car or truck.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context, car: BodyId) {
+    /// if let Some(v) = ctx.physics.vehicle(car) {
+    ///     let text = v.describe_speed();
+    ///     ctx.speak(text);
+    /// }
+    /// # }
+    /// ```
+    pub fn vehicle(&self, id: BodyId) -> Option<&Vehicle> {
+        self.get(id).and_then(|b| b.vehicle.as_ref())
+    }
+
+    /// Mutable access to the vehicle part of a body: pedals, steering, load, fuel, settings.
+    pub fn vehicle_mut(&mut self, id: BodyId) -> Option<&mut Vehicle> {
+        self.get_mut(id).and_then(|b| b.vehicle.as_mut())
+    }
+
+    /// Total weight of a body in kilograms: its mass plus the load of its vehicle (0 if the
+    /// body does not exist).
+    pub fn weight(&self, id: BodyId) -> f32 {
+        self.get(id).map_or(0.0, |b| b.mass + b.vehicle.as_ref().map_or(0.0, |v| v.load))
+    }
+
+    /// How fast a body moves in meters per second: the length of its velocity. For
+    /// vehicles this is their driving speed. Kinematic bodies moved with `move_by` have no
+    /// velocity, so they report 0.
+    pub fn speed(&self, id: BodyId) -> f32 {
+        self.velocity(id).length()
+    }
+
+    /// If `vehicle` crashed into something this frame: what it hit and the speed lost in
+    /// meters per second.
+    pub fn crashed(&self, vehicle: BodyId) -> Option<(BodyId, f32)> {
+        self.events.iter().find_map(|e| match *e {
+            PhysicsEvent::Crashed { vehicle: v, other, speed } if v == vehicle => Some((other, speed)),
+            _ => None,
+        })
+    }
+
+    /// If `vehicle` changed gear this frame: the new gear (-1 reverse, 0 neutral, 1 and up).
+    pub fn gear_changed(&self, vehicle: BodyId) -> Option<i32> {
+        self.events.iter().rev().find_map(|e| match *e {
+            PhysicsEvent::GearChanged { vehicle: v, gear } if v == vehicle => Some(gear),
             _ => None,
         })
     }

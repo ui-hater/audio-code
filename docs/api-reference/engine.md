@@ -573,6 +573,7 @@ match ctx.audio.preload("music/boss") {
 - `Cooldown`, `Interval`, `Time`, `Timer`
 - `Confirm`, `Menu`, `Message`, `TextInput`, `Ui`, `UiEvent`, `UiSound`, `UiSounds`,
   `Value`, `Widget`
+- `Vehicle`
 
 Not in the prelude (import by path): `audio_code::Runner`, `audio_code::Error`,
 `audio_code::audio::SoundBuilder`, `audio_code::input::RawInput`,

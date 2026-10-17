@@ -5,7 +5,7 @@ use glam::Vec3;
 use crate::audio::Sound;
 use crate::engine::Context;
 use crate::input::Key;
-use crate::physics::BodyId;
+use crate::physics::{BodyId, PhysicsEvent};
 
 /// A sound that follows a physics body.
 #[derive(Debug)]
@@ -115,6 +115,117 @@ impl Context {
                 true
             }
         });
+    }
+
+    /// Drives a vehicle with the keyboard: Up or W is the gas pedal, Down or S brakes and,
+    /// once the vehicle stands still, reverses, Left / Right or A / D steer, Space is the
+    /// handbrake. Call it every frame. Does nothing for bodies without a vehicle. While a
+    /// menu is open all pedals are released.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context) {
+    /// let car = ctx.physics.add(Body::car(Vec3::ZERO));
+    /// ctx.follow(car);
+    /// // in update():
+    /// ctx.drive(car);
+    /// # }
+    /// ```
+    pub fn drive(&mut self, vehicle: BodyId) {
+        let input = &self.input;
+        let throttle = (input.held(Key::Up) || input.held(Key::W)) as u8 as f32;
+        let brake = (input.held(Key::Down) || input.held(Key::S)) as u8 as f32;
+        let right = (input.held(Key::Right) || input.held(Key::D)) as i32;
+        let left = (input.held(Key::Left) || input.held(Key::A)) as i32;
+        let handbrake = input.held(Key::Space);
+        if let Some(v) = self.physics.vehicle_mut(vehicle) {
+            v.throttle = throttle;
+            v.brake = brake;
+            v.steer = (right - left) as f32;
+            v.handbrake = handbrake;
+        }
+    }
+
+    /// Honks: plays the vehicle's horn sound at the vehicle. Returns a silent handle if it
+    /// has none.
+    pub fn horn(&mut self, vehicle: BodyId) -> Sound {
+        match self.physics.vehicle(vehicle).and_then(|v| v.horn_sound.clone()) {
+            Some(name) => self.play_on(vehicle, &name),
+            None => Sound::none(),
+        }
+    }
+
+    /// Starts the engine of a vehicle and plays its start sound. Returns `false` if the
+    /// body is no vehicle, the engine already runs or the tank is empty.
+    pub fn start_engine(&mut self, vehicle: BodyId) -> bool {
+        let Some(v) = self.physics.vehicle_mut(vehicle) else {
+            return false;
+        };
+        if v.is_engine_on() || !v.start_engine() {
+            return false;
+        }
+        if let Some(name) = v.start_sound.clone() {
+            self.play_on(vehicle, &name);
+        }
+        true
+    }
+
+    /// Stops the engine of a vehicle. Its engine sound fades out and it rolls out.
+    pub fn stop_engine(&mut self, vehicle: BodyId) {
+        if let Some(v) = self.physics.vehicle_mut(vehicle) {
+            v.stop_engine();
+        }
+    }
+
+    /// Keeps the engine loops of vehicles playing, and plays shift and crash sounds.
+    /// Called by the engine once per frame.
+    pub(crate) fn sync_vehicles(&mut self) {
+        let (physics, audio) = (&self.physics, &mut self.audio);
+        // Engine loops: start while the engine runs, follow rpm and throttle, stop otherwise.
+        self.engine_sounds.retain(|(id, sound)| {
+            let running = physics.vehicle(*id).is_some_and(|v| v.is_engine_on() && v.engine_sound.is_some());
+            if !running || !sound.is_playing() {
+                sound.fade_out(0.3);
+            }
+            running && sound.is_playing()
+        });
+        for (id, body) in physics.bodies() {
+            let Some(v) = &body.vehicle else {
+                continue;
+            };
+            let Some(name) = &v.engine_sound else {
+                continue;
+            };
+            if !v.is_engine_on() {
+                continue;
+            }
+            let (pitch, volume) = (v.engine_pitch(), 0.6 + 0.4 * v.throttle.clamp(0.0, 1.0));
+            match self.engine_sounds.iter().find(|(e, _)| *e == id) {
+                Some((_, sound)) => {
+                    sound.set_position(body.position);
+                    sound.set_pitch(pitch);
+                    sound.set_volume(volume);
+                }
+                None => {
+                    let sound = audio.sound(name).looped().at(body.position).pitch(pitch).volume(volume).play();
+                    self.engine_sounds.push((id, sound));
+                }
+            }
+        }
+        for event in physics.events() {
+            let (vehicle, name, volume) = match *event {
+                PhysicsEvent::Crashed { vehicle, speed, .. } => {
+                    (vehicle, physics.vehicle(vehicle).and_then(|v| v.crash_sound.as_deref()), (speed / 15.0).min(1.0))
+                }
+                PhysicsEvent::GearChanged { vehicle, gear } if gear != 0 => {
+                    (vehicle, physics.vehicle(vehicle).and_then(|v| v.shift_sound.as_deref()), 1.0)
+                }
+                _ => continue,
+            };
+            if let Some(name) = name {
+                audio.sound(name).at(physics.position(vehicle)).volume(volume).play();
+            }
+        }
     }
 
     /// Moves the listener and attached sounds to their bodies. Called by the engine every frame.

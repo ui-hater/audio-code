@@ -18,7 +18,7 @@ cargo test
 cargo test   physics::tests::jump_reaches_height   # single test (path filter)
 cargo clippy --features wxdragon --all-targets  # must stay warning-free
 RUSTDOCFLAGS="-D warnings" cargo doc --features wxdragon --no-deps
-cargo run    --example menus      # hello, menus, beacon, platformer, flight
+cargo run    --example menus      # hello, clicker, menus, beacon, platformer, flight, driving
 cargo run    --features wxdragon --example wx_game
 ```
 
@@ -69,6 +69,7 @@ cargo run    --features wxdragon --example wx_game
 - `resolve(id)` pushes out along the minimum translation. Overlap is shared by mass between dynamic bodies. Kinematic pushers move dynamic bodies fully, unless `obstructed` (crate against a wall).
 - `bounce` handles momentum and restitution and returns the impact speed for `CollisionStarted` and `Landed` events.
 - `move_by` is the immediate, sliding "character controller" API.
+- Vehicles (`src/vehicle.rs`) are an optional `Body::vehicle`. `step` drives them first (`step_vehicle`: simulate pedals, gears, fuel, then `move_by`; a blocked move removes the speed into the obstacle and emits `Crashed`). `Context::sync_vehicles` runs once per frame and keeps engine loops and shift/crash sounds in sync.
 
 **Conventions shared across modules** (`src/math.rs`):
 - z is up, +y is north, +x is east.

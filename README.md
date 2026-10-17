@@ -16,6 +16,7 @@ make the common things one line long:
 | **Synth** | Design clicks, beeps and effects in code. You do not need any sound files to start. |
 | **Virtual UI** | Spoken menus with buttons, sliders, checkboxes, choices and text fields, plus message boxes, yes/no questions and text input. Keyboard only, with replaceable interface sounds. |
 | **Physics** | Full 3D: walls, floors, ceilings, gravity, jumping, flying with facing and pitch, mass, forces, pushable objects, moving platforms, trigger zones, ray casts, landing and collision events. |
+| **Vehicles** | Cars and trucks with weight and cargo, speed in km/h, engine, automatic gears, brakes, handbrake, reverse, steering, fuel, crashes, and engine, horn, shift and crash sounds. Optional: other bodies are not affected. |
 | **Levels** | Draw a level as a text map: `#` is a wall, letters are spawn points. |
 | **Time** | Frame delta, slow motion and pause, a named scheduler (`after`, `every`), timers, cooldowns, intervals. |
 | **Input** | Pressed / held / released keys, key repeat with your own timing, typed text, direction helpers. |
@@ -363,6 +364,7 @@ the 3D sound.
 | `beacon` | text map maze, turning and walking, 3D beacons, pause scene, saved best time |
 | `platformer` | gravity, jumping, landing sounds, a lift, a pushable crate, collecting coins |
 | `flight` | full 3D: fly a drone, look up and down, find birds at different heights |
+| `driving` | drive a car or a truck through a town: gears, reverse, horn, fuel, loading the truck, crashes |
 | `wx_game` | a game inside a wxWidgets window next to a native button |
 
 ```sh
@@ -396,6 +398,7 @@ src/
 │   ├── dialog.rs   Message, Confirm, TextInput
 │   └── sounds.rs   interface sound slots and the built-in sounds
 ├── physics.rs      World, Body, collision resolution, events, ray casts
+├── vehicle.rs      cars and trucks: weight, speed, engine, gears, brakes, fuel
 ├── level.rs        building walls from text maps
 ├── input.rs        Key, Input (pressed/held/released, repeat, text)
 ├── time.rs         Time (frame time + scheduler), Timer, Cooldown, Interval
@@ -456,13 +459,15 @@ where `ctx.ui.clicked(..)` and `Scene::on_ui` can see them.
 **Physics.** Bodies are boxes or spheres that never rotate, which keeps the math simple and
 predictable. Each step:
 
-1. kinematic bodies (moved by your code: platforms, doors) move first and carry whatever
+1. vehicles turn and change speed from their pedals, then drive like a character (stopped
+   by walls)
+2. kinematic bodies (moved by your code: platforms, doors) move first and carry whatever
    stands on them
-2. dynamic bodies get gravity, forces, damping and friction, then move in small sub steps so
+3. dynamic bodies get gravity, forces, damping and friction, then move in small sub steps so
    fast bodies do not pass through thin walls
-3. overlaps are pushed apart along the shortest way out, and speed into the surface is
+4. overlaps are pushed apart along the shortest way out, and speed into the surface is
    removed or bounced
-4. new contacts become `CollisionStarted` / `Landed` events, and sensors produce `Entered` /
+5. new contacts become `CollisionStarted` / `Landed` events, and sensors produce `Entered` /
    `Left`
 
 `move_by` / `move_forward` use the same push-out logic right away, which makes them a
@@ -491,6 +496,7 @@ gives silent audio and console speech, and drive frames by hand with `Runner::fr
 - [Speech](docs/speech.md): screen readers, NVDA fallback, history, braille
 - [Virtual UI](docs/ui.md): menus, dialogs, text input, custom click sounds, custom widgets
 - [Physics](docs/physics.md): bodies, gravity, jumping, events, levels from text maps
+- [Cars and trucks](docs/vehicles.md): weight, speed, steering, gears, brakes, fuel, vehicle sounds
 - [Positions, directions and 3D](docs/3d.md): what `vec3(x, y, z)` means, angles, flying, sound above and below
 - [Time and input](docs/time-and-input.md): delta time, scheduler, timers, keys
 - [Scenes, shared data and saving](docs/scenes.md)

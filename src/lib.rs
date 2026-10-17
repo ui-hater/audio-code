@@ -7,6 +7,7 @@
 //! * **Sound**: one-line playback, 3D positioned sounds, music with cross fades ([`audio`])
 //! * **Virtual UI**: spoken menus, sliders, checkboxes, text fields and dialogs ([`ui`])
 //! * **Physics**: walls, floors, gravity, triggers and ray casts ([`physics`])
+//! * **Vehicles**: cars and trucks with weight, speed, gears, brakes and fuel ([`vehicle`])
 //! * **Time**: frame timing, a scheduler, timers, cooldowns and intervals ([`time`])
 //! * **Input**: pressed / held / released, custom key repeat, typed text ([`input`])
 //! * Optional **wxWidgets** integration through wxDragon (`audio_code::wx`, feature `wxdragon`)
@@ -63,6 +64,7 @@ pub mod speech;
 pub mod storage;
 pub mod time;
 pub mod ui;
+pub mod vehicle;
 mod window;
 #[cfg(feature = "wxdragon")]
 pub mod wx;
@@ -115,4 +117,5 @@ pub mod prelude {
     pub use crate::storage::Storage;
     pub use crate::time::{Cooldown, Interval, Time, Timer};
     pub use crate::ui::{Confirm, Menu, Message, TextInput, Ui, UiEvent, UiSound, UiSounds, Value, Widget};
+    pub use crate::vehicle::Vehicle;
 }

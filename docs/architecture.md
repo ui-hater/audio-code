@@ -46,7 +46,8 @@ reached through channels. No game code ever holds a lock.
 6. `physics.clear_events()`, then physics steps at a fixed rate with an accumulator (at most
    8 steps per frame, so a slow machine cannot spiral). `fixed_update` runs after each step.
 7. `Scene::update`.
-8. `ctx.sync_world()` moves the listener and attached sounds (see [Shortcuts](#shortcuts-shortcutsrs)).
+8. `ctx.sync_world()` moves the listener and attached sounds (see [Shortcuts](#shortcuts-shortcutsrs)),
+   then `ctx.sync_vehicles()` updates engine loops and plays shift and crash sounds.
 9. `apply_change()` applies `push_scene` / `pop_scene` / `switch_scene`. It loops, because a
    scene's `start` may request another change.
 10. If `ctx.quit()` was called: `shutdown()` ends all scenes and saves `ctx.storage`.
@@ -254,7 +255,8 @@ instead.
 
 **`step(dt)`**:
 
-1. Move kinematic bodies by `velocity · dt` and remember their displacement.
+0. Drive vehicles (see [Vehicles](#vehicles-vehiclers)).
+1. Move kinematic bodies (vehicles excluded) by `velocity · dt` and remember their displacement.
 2. For each dynamic body:
    1. If its `ground` moved, apply that displacement (platforms carry bodies).
    2. Add `velocity += (gravity · gravity_scale + force / mass) · dt` and clear the force.
@@ -280,6 +282,31 @@ velocities. `blocked` is set when a contact normal opposes the movement. `move_f
 **Ray casts** use the slab method for boxes and the quadratic formula for spheres, and
 ignore sensors.
 
+### Vehicles (`vehicle.rs`)
+
+`Body::vehicle: Option<Vehicle>`; bodies with a vehicle are kinematic. In `step_vehicle` the
+vehicle is taken out of its body (so `move_by` can borrow the world), simulated, and put
+back:
+
+1. `Vehicle::simulate(mass, dt)`: weight = mass + load. Arcade pedals: moving forward the
+   brake brakes, moving backward the gas brakes, standing still (< 0.3 m/s) gas minus brake
+   drives. The pedal that braked to a stop is held (`hold`) until released, so holding the
+   brake does not flip into reverse. Engine acceleration is
+   `engine_force · drive · (1 − (v/top)²) / weight`, clamped to `grip`. Braking is
+   `brake_force · pedal / weight` (handbrake: `grip`), clamped to `grip`, plus rolling
+   resistance, plus engine braking and `0.3 · engine_force / weight · (v/top)²` air drag
+   when no pedal drives. Deceleration never crosses zero.
+2. Turn rate = `min(|v| / turn_radius` in degrees`, max_turn_rate) · steer · sign(v)`.
+3. Fuel: `consumption / 100 000` liters per meter, times `0.3 + 0.7 · pedal` and
+   `weight / mass`. An empty tank stops the engine.
+4. Gearbox: gear bands are `top · g / gears`; shift up above 95 % of the band, down below
+   70 % of the band below. rpm = idle + (max − idle) · speed / band (at least 30 % of the
+   throttle while revving). Changes emit `GearChanged`.
+5. The new facing and `forward(facing) · speed · dt` go to `move_by`. If it was blocked,
+   `contact_ahead` probes 2 cm further to find the obstacle and its normal; the velocity
+   into the normal is removed (sliding keeps the rest) and, above 0.5 m/s, `Crashed` is
+   emitted with the lost speed. `velocity` is set for other code to read.
+
 ### Levels (`level.rs`)
 
 `build_level` trims blank lines and the common indentation, then scans row by row. Runs of
@@ -297,6 +324,12 @@ The convenience methods on `Context` are thin wrappers, plus two pieces of state
   removed.
 
 `once(name)` is a `HashSet<String>` insert.
+
+`engine_sounds: Vec<(BodyId, Sound)>` holds one engine loop per vehicle with an engine
+sound. `sync_vehicles` (once per frame, from `Runner::frame`, not from `follow`) starts the
+loop when the engine runs, sets its position, pitch (`engine_pitch`) and volume, fades it
+out when the engine stops or the body is removed, and plays shift and crash sounds for this
+frame's events.
 
 ## Storage (`storage.rs`)
 

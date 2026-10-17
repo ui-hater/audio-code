@@ -38,6 +38,15 @@ First version.
 - Detailed README with an explained example game, and `docs/architecture.md` explaining
   the internals; README code blocks are compiled as doc tests
 - Synthetic key presses on window focus are ignored
+- Vehicles (`audio_code::vehicle`, optional per body): `Body::car`, `Body::truck`,
+  `Body::with_vehicle` and `Vehicle` with weight and cargo (`load`, `max_load`), top and
+  reverse speed, engine and brake force, grip, rolling resistance, engine braking and air
+  drag, speed dependent steering, automatic gears with rpm and `engine_pitch`, handbrake,
+  reverse on the brake pedal, engine on/off, fuel tank and odometer; `ctx.drive`,
+  `ctx.horn`, `ctx.start_engine`, `ctx.stop_engine`; automatic engine, shift and crash
+  sounds; `World::vehicle`, `vehicle_mut`, `weight`, `speed`, `crashed`, `gear_changed`;
+  events `PhysicsEvent::Crashed` and `PhysicsEvent::GearChanged`; `driving` example and
+  `docs/vehicles.md`
 - API reference in `docs/api-reference/`: every public function with its signature, defaults
   and an example, one page per module
 - Menu music: `Menu::music` loops a track while the menu is open, submenus keep it, and the

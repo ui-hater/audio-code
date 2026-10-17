@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::audio::Audio;
+use crate::audio::{Audio, Sound};
 use crate::error::Result;
 use crate::input::{Input, Key, KeyEvent};
 use crate::physics::{BodyId, World};
@@ -81,6 +81,7 @@ pub struct Context {
     pub storage: Storage,
     pub(crate) follow: Option<BodyId>,
     pub(crate) attached: Vec<Attached>,
+    pub(crate) engine_sounds: Vec<(BodyId, Sound)>,
     pub(crate) once: HashSet<String>,
     title: String,
     quit: bool,
@@ -436,6 +437,7 @@ impl Runner {
             },
             follow: None,
             attached: Vec::new(),
+            engine_sounds: Vec::new(),
             once: HashSet::new(),
             title: config.title.clone(),
             quit: false,
@@ -527,6 +529,7 @@ impl Runner {
             scene.update(&mut self.ctx);
         }
         self.ctx.sync_world();
+        self.ctx.sync_vehicles();
         self.apply_change();
 
         if self.ctx.quit {

@@ -400,6 +400,8 @@ cleared before the next frame's steps, so read them in `update` every frame.
 | `Landed { body, on, speed }` | the dynamic `body` touched ground after being in the air | `speed`: falling speed in m/s |
 | `Entered { sensor, body }` | a solid `body` came into `sensor` | |
 | `Left { sensor, body }` | it went out again | |
+| `Crashed { vehicle, other, speed }` | a vehicle drove into `other` | `speed`: speed lost in m/s |
+| `GearChanged { vehicle, gear }` | a vehicle changed gear | `gear`: -1 reverse, 0 neutral, 1 and up |
 
 `speed` in `CollisionStarted` only counts the part of the movement that goes into the other
 body: running along a wall gives a low speed, running straight into it a high one. It is
@@ -473,6 +475,11 @@ ctx.physics.clear();
 
 Calls with an id that no longer exists do nothing and return a neutral value (zero
 position, empty tag, `false`).
+
+## Cars and trucks
+
+A body can optionally be a vehicle with weight, speed, gears, brakes and fuel:
+`ctx.physics.add(Body::car(pos))`. See [Cars and trucks](vehicles.md).
 
 ## Limits
 

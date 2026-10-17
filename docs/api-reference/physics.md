@@ -30,6 +30,10 @@ ctx.physics.set_gravity(EARTH_GRAVITY);
 | `Kinematic` | `Body::kinematic` | your code (`move_by`, ...) or its velocity, which ignores walls | no | yes, and pushes dynamic bodies |
 | `Sensor` | `Body::sensor` | nothing (only `set_position`) | no | no, only reports `Entered` / `Left` |
 
+Cars and trucks are kinematic bodies with an optional vehicle part (`Body::car`,
+`Body::truck`, `body.with_vehicle(..)`), driven by the world from their pedals. They are
+described on [vehicle.md](vehicle.md).
+
 Typical use: a top down player is kinematic and moved with `move_by` / `move_forward`. A
 platformer player is dynamic, moved with velocity and `jump`. Walls and floors are fixed.
 Lifts are kinematic with a velocity. Coins, doors and room triggers are sensors.
@@ -81,6 +85,24 @@ leave it.
 
 ```rust
 let exit = ctx.physics.add(Body::sensor(vec3(20.0, 8.0, 0.0)).with_box(2.0, 2.0, 3.0).with_tag("exit"));
+```
+
+### `Body::car(position: Vec3) -> Body` and `Body::truck(position: Vec3) -> Body`
+
+A kinematic vehicle body: car (1 m sphere, 1300 kg, tag `"car"`) or truck (1.5 m sphere,
+12 t, tag `"truck"`). See [vehicle.md](vehicle.md).
+
+```rust
+let car = ctx.physics.add(Body::car(vec3(0.0, 0.0, 0.0)));
+let truck = ctx.physics.add(Body::truck(vec3(10.0, 0.0, 0.0)));
+```
+
+### `body.with_vehicle(vehicle: Vehicle) -> Body`
+
+Makes the body a vehicle and kinematic. See [vehicle.md](vehicle.md).
+
+```rust
+let van = Body::kinematic(Vec3::ZERO).with_sphere(1.2).with_mass(2500.0).with_vehicle(Vehicle::car());
 ```
 
 ### `body.with_box(width: f32, depth: f32, height: f32) -> Body`
@@ -154,8 +176,9 @@ let balloon = Body::dynamic(Vec3::ZERO).with_gravity_scale(-0.2);
 
 ### `body.with_mass(mass: f32) -> Body`
 
-Mass in kilograms, default 1.0 (minimum 0.001). Heavier bodies push lighter ones further,
-lose less speed in collisions and are moved less by forces.
+Mass (weight) in kilograms, default 1.0 (minimum 0.001). Heavier bodies push lighter ones
+further, lose less speed in collisions and are moved less by forces. For vehicles it is
+the empty weight.
 
 ```rust
 let boulder = Body::dynamic(vec3(0.0, 5.0, 1.0)).with_sphere(1.0).with_mass(500.0);
@@ -220,10 +243,11 @@ assert!(room.contains(vec3(1.0, 1.0, 0.0)));
 | `user_data` | `u64` | free number |
 | `facing` | `f32` | compass degrees |
 | `pitch` | `f32` | degrees up |
-| `mass` | `f32` | kilograms |
+| `mass` | `f32` | kilograms (vehicles: empty weight) |
 | `max_speed` | `f32` | m/s, `f32::INFINITY` = none |
 | `on_ground` | `bool` | touched ground in the last step (dynamic only, read only in practice) |
 | `ground` | `Option<BodyId>` | what it stands on; moving kinematic grounds carry it |
+| `vehicle` | `Option<Vehicle>` | the optional car / truck part, see [vehicle.md](vehicle.md) |
 
 ```rust
 if let Some(body) = ctx.physics.get_mut(player) {
@@ -396,6 +420,23 @@ dynamic bodies it is integrated with gravity and collisions.
 
 ```rust
 ctx.physics.set_velocity(door, vec3(0.0, 0.0, 0.5));   // door slides up
+```
+
+### `ctx.physics.speed(id: BodyId) -> f32`
+
+How fast a body moves in m/s: the length of its velocity. Vehicles report their driving
+speed; kinematic bodies moved with `move_by` report 0.
+
+```rust
+let kmh = ctx.physics.speed(enemy) * 3.6;
+```
+
+### `ctx.physics.weight(id: BodyId) -> f32`
+
+Total weight in kilograms: mass plus vehicle load (0 if the body does not exist).
+
+```rust
+let kg = ctx.physics.weight(enemy);
 ```
 
 ### `ctx.physics.apply_impulse(id: BodyId, impulse: Vec3)`
@@ -816,6 +857,8 @@ pub enum PhysicsEvent {
     Landed { body: BodyId, on: BodyId, speed: f32 },        // dynamic body touched ground after air
     Entered { sensor: BodyId, body: BodyId },               // solid body entered a sensor
     Left { sensor: BodyId, body: BodyId },                  // body left a sensor
+    Crashed { vehicle: BodyId, other: BodyId, speed: f32 },  // vehicle hit `other`, lost `speed` m/s
+    GearChanged { vehicle: BodyId, gear: i32 },             // -1 reverse, 0 neutral, 1..
 }
 ```
 
@@ -838,5 +881,8 @@ for event in ctx.physics.events() {
     }
 }
 ```
+
+Vehicle events have shortcuts too: `ctx.physics.crashed(car)` and
+`ctx.physics.gear_changed(car)` ([vehicle.md](vehicle.md#world-functions)).
 
 Building walls from a text map (`ctx.physics.build_level`) is on [level.md](level.md).

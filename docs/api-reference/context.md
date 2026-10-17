@@ -287,6 +287,17 @@ let hum = ctx.audio.sound("hum").volume(0.3).looped().at(Vec3::ZERO).play();
 ctx.attach(enemy, hum);
 ```
 
+### Vehicle shortcuts
+
+`ctx.drive(vehicle)`, `ctx.horn(vehicle)`, `ctx.start_engine(vehicle)` and
+`ctx.stop_engine(vehicle)` are described on [vehicle.md](vehicle.md#context-shortcuts).
+
+```rust
+let car = ctx.physics.add(Body::car(Vec3::ZERO));
+ctx.follow(car);
+ctx.drive(car);   // every frame
+```
+
 ### `ctx.stop_sounds_on(body: BodyId)`
 
 Stops every sound attached to a body with `play_on`, `loop_on` or `attach`.

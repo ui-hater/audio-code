@@ -64,6 +64,22 @@ Engine::new("My game").gravity(EARTH_GRAVITY).run_with(Level::new)?;   // Level:
 | Landed (dynamic body) | `if let Some(speed) = ctx.physics.landed(p) { ... }` (falling speed in m/s) |
 | Remove | `ctx.physics.remove(id)` |
 
+## Cars and trucks
+
+| What | Code |
+|------|------|
+| A car / a truck | `let car = ctx.physics.add(Body::car(pos));`, `Body::truck(pos)` |
+| With sounds and a tank | `Body::car(pos).with_vehicle(Vehicle::car().with_engine_sound("engine").with_fuel(50.0, 8.0))` |
+| Drive with the arrows | `ctx.drive(car);` every frame (Space = handbrake) |
+| Speed | `ctx.physics.vehicle(car).map(\|v\| v.speed_kmh())`, `v.describe_speed()` → "54 kilometers per hour" |
+| Gear | `v.gear()` (-1 reverse, 0 neutral), `v.gear_name()` |
+| Cargo and weight | `ctx.physics.vehicle_mut(truck).map(\|v\| v.set_load(20_000.0));`, `ctx.physics.weight(truck)` (kg) |
+| Pedals by hand | `v.throttle = 1.0; v.brake = 0.0; v.steer = -0.5;` |
+| Horn / engine | `ctx.horn(car)`, `ctx.start_engine(car)`, `ctx.stop_engine(car)` |
+| Crashed | `if let Some((other, speed)) = ctx.physics.crashed(car) { ... }` (m/s lost) |
+
+Details in [Cars and trucks](vehicles.md).
+
 ## Time
 
 | What | Code |
