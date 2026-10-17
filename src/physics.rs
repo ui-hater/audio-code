@@ -89,6 +89,10 @@ pub struct Body {
     pub tag: String,
     /// Free number for your own data, e.g. an index into your entity list.
     pub user_data: u64,
+    /// Compass direction the body faces in degrees (0 = north, 90 = east). Shapes never
+    /// rotate; this is used by [`World::move_forward`], [`World::turn`] and the listener
+    /// when a body is followed with [`Context::follow`](crate::Context::follow).
+    pub facing: f32,
     /// Mass in kilograms (dynamic bodies). Heavier bodies push lighter ones further and lose
     /// less speed when they collide.
     pub mass: f32,
@@ -116,6 +120,7 @@ impl Body {
             damping: 0.0,
             tag: String::new(),
             user_data: 0,
+            facing: 0.0,
             mass: 1.0,
             max_speed: f32::INFINITY,
             on_ground: false,
@@ -201,6 +206,12 @@ impl Body {
     /// Sets a speed limit in meters per second (terminal velocity).
     pub fn with_max_speed(mut self, max_speed: f32) -> Self {
         self.max_speed = max_speed.max(0.0);
+        self
+    }
+
+    /// Sets the compass direction the body faces.
+    pub fn with_facing(mut self, degrees: f32) -> Self {
+        self.facing = crate::math::normalize_angle(degrees);
         self
     }
 
@@ -883,6 +894,125 @@ impl World {
     }
 }
 
+
+/// Convenience helpers for typical audio game code.
+impl World {
+    /// Compass direction a body faces (0 if it does not exist).
+    pub fn facing(&self, id: BodyId) -> f32 {
+        self.get(id).map_or(0.0, |b| b.facing)
+    }
+
+    /// Sets the compass direction a body faces.
+    pub fn set_facing(&mut self, id: BodyId, degrees: f32) {
+        if let Some(b) = self.get_mut(id) {
+            b.facing = crate::math::normalize_angle(degrees);
+        }
+    }
+
+    /// Turns a body by `degrees` (positive = clockwise / right) and returns the new facing.
+    pub fn turn(&mut self, id: BodyId, degrees: f32) -> f32 {
+        let facing = crate::math::normalize_angle(self.facing(id) + degrees);
+        self.set_facing(id, facing);
+        facing
+    }
+
+    /// Moves a body `distance` meters in the direction it faces (negative = backwards),
+    /// sliding along walls. See [`World::move_by`].
+    pub fn move_forward(&mut self, id: BodyId, distance: f32) -> MoveResult {
+        let delta = crate::math::forward(self.facing(id)) * distance;
+        self.move_by(id, delta)
+    }
+
+    /// Moves a body sideways, `distance` meters to its right (negative = left).
+    pub fn strafe(&mut self, id: BodyId, distance: f32) -> MoveResult {
+        let delta = crate::math::right(self.facing(id)) * distance;
+        self.move_by(id, delta)
+    }
+
+    /// Distance between two bodies' centers (infinity if one does not exist).
+    pub fn distance(&self, a: BodyId, b: BodyId) -> f32 {
+        match (self.get(a), self.get(b)) {
+            (Some(a), Some(b)) => a.position.distance(b.position),
+            _ => f32::INFINITY,
+        }
+    }
+
+    /// Where `target` is from the point of view of `from`, ready to speak:
+    /// `"3 o'clock, 12 meters"`. Uses the facing of `from`.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context, player: BodyId, beacon: BodyId) {
+    /// ctx.speak(ctx.physics.describe(player, beacon));
+    /// # }
+    /// ```
+    pub fn describe(&self, from: BodyId, target: BodyId) -> String {
+        crate::math::describe_position(self.position(from), self.facing(from), self.position(target))
+    }
+
+    // ------------------------------------------------------------- event shortcuts
+
+    /// If `body` landed on something this frame: the falling speed.
+    pub fn landed(&self, body: BodyId) -> Option<f32> {
+        self.events.iter().find_map(|e| match *e {
+            PhysicsEvent::Landed { body: b, speed, .. } if b == body => Some(speed),
+            _ => None,
+        })
+    }
+
+    /// If `body` started touching another solid body this frame: that body and the impact
+    /// speed.
+    pub fn collided(&self, body: BodyId) -> Option<(BodyId, f32)> {
+        self.events.iter().find_map(|e| match *e {
+            PhysicsEvent::CollisionStarted { a, b, speed } if a == body => Some((b, speed)),
+            PhysicsEvent::CollisionStarted { a, b, speed } if b == body => Some((a, speed)),
+            _ => None,
+        })
+    }
+
+    /// If `body` walked into a sensor this frame: the sensor.
+    pub fn entered(&self, body: BodyId) -> Option<BodyId> {
+        self.events.iter().find_map(|e| match *e {
+            PhysicsEvent::Entered { sensor, body: b } if b == body => Some(sensor),
+            _ => None,
+        })
+    }
+
+    /// If `body` walked into a sensor with this tag this frame: the sensor.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context, player: BodyId) {
+    /// if let Some(coin) = ctx.physics.entered_tag(player, "coin") {
+    ///     ctx.physics.remove(coin);   // sounds attached with ctx.loop_on stop by themselves
+    ///     ctx.play("pickup");
+    /// }
+    /// # }
+    /// ```
+    pub fn entered_tag(&self, body: BodyId, tag: &str) -> Option<BodyId> {
+        self.events.iter().find_map(|e| match *e {
+            PhysicsEvent::Entered { sensor, body: b } if b == body && self.tag(sensor) == tag => Some(sensor),
+            _ => None,
+        })
+    }
+
+    /// If `body` left a sensor this frame: the sensor.
+    pub fn left(&self, body: BodyId) -> Option<BodyId> {
+        self.events.iter().find_map(|e| match *e {
+            PhysicsEvent::Left { sensor, body: b } if b == body => Some(sensor),
+            _ => None,
+        })
+    }
+
+    /// Whether anything entered `sensor` this frame; returns the body.
+    pub fn triggered(&self, sensor: BodyId) -> Option<BodyId> {
+        self.events.iter().find_map(|e| match *e {
+            PhysicsEvent::Entered { sensor: s, body } if s == sensor => Some(body),
+            _ => None,
+        })
+    }
+}
+
 /// Ray against axis aligned box (slab method). Returns distance and normal.
 fn ray_box(origin: Vec3, dir: Vec3, min: Vec3, max: Vec3) -> Option<(f32, Vec3)> {
     let mut t_min = 0.0f32;
@@ -1088,5 +1218,20 @@ mod tests {
         let offset = w.position(p).x - w.position(lift).x;
         run(&mut w, 1.5);
         assert!((w.position(p).x - w.position(lift).x - offset).abs() < 0.02);
+    }
+
+    #[test]
+    fn facing_and_event_helpers() {
+        let mut w = World::new();
+        let p = w.add(Body::kinematic(Vec3::ZERO).with_sphere(0.3).with_facing(90.0));
+        let coin = w.add(Body::sensor(vec3(2.0, 0.0, 0.0)).with_sphere(0.5).with_tag("coin"));
+        assert_eq!(w.turn(p, -90.0), 0.0);
+        w.turn(p, 90.0);
+        assert_eq!(w.describe(p, coin), "12 o'clock, 2 meters");
+        w.move_forward(p, 2.0);
+        assert_eq!(w.entered_tag(p, "coin"), Some(coin));
+        assert_eq!(w.triggered(coin), Some(p));
+        assert_eq!(w.entered_tag(p, "door"), None);
+        assert!((w.position(p).x - 2.0).abs() < 1e-4);
     }
 }

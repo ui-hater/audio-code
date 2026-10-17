@@ -92,6 +92,15 @@ ctx.input.modifiers().shift;
 
 A key that goes down and up within one frame still counts as `pressed`.
 
+Shortcuts: `ctx.pressed(key)` and `ctx.held(key)` are the same as the `ctx.input` versions.
+
+### Directions
+
+```rust
+let run = ctx.input.axis(Key::Left, Key::Right);   // -1.0, 0.0 or 1.0
+let dir = ctx.input.movement();                    // arrows or WASD: x = right, y = forward
+```
+
 ### Your own key repeat
 
 `repeating(key, delay, every)` returns true when the key goes down, then after `delay`

@@ -213,6 +213,20 @@ impl Input {
         ticks(now) > ticks(prev)
     }
 
+    /// -1.0, 0.0 or 1.0 depending on which of two held keys is down, e.g.
+    /// `ctx.input.axis(Key::Left, Key::Right)` for running in a side scroller.
+    pub fn axis(&self, negative: Key, positive: Key) -> f32 {
+        self.held(positive) as i32 as f32 - self.held(negative) as i32 as f32
+    }
+
+    /// Movement direction from the arrow keys or WASD: `x` is right, `y` is forward.
+    /// Diagonals are normalized, so moving diagonally is not faster.
+    pub fn movement(&self) -> glam::Vec2 {
+        let x = (self.held(Key::Right) || self.held(Key::D)) as i32 - (self.held(Key::Left) || self.held(Key::A)) as i32;
+        let y = (self.held(Key::Up) || self.held(Key::W)) as i32 - (self.held(Key::Down) || self.held(Key::S)) as i32;
+        glam::Vec2::new(x as f32, y as f32).normalize_or_zero()
+    }
+
     /// `true` if any key went down this frame.
     pub fn any_pressed(&self) -> bool {
         !self.blocked && !self.pressed.is_empty()

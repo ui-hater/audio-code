@@ -4,17 +4,15 @@
 //!
 //! Run with `cargo run --example platformer`.
 
-use std::collections::HashMap;
-
 use audio_code::prelude::*;
+
+const COINS: usize = 4;
 
 struct Platformer {
     player: BodyId,
     lift: BodyId,
-    coins: HashMap<BodyId, Sound>,
     run_sound: Sound,
-    score: u32,
-    won: bool,
+    score: usize,
 }
 
 impl Platformer {
@@ -35,31 +33,30 @@ impl Platformer {
         // A lift going up and down at x = 40, and a heavy crate at x = 30.
         let lift = physics.add(Body::kinematic(vec3(40.0, 0.0, 0.0)).with_box(3.0, 4.0, 0.5).with_tag("lift"));
         physics.add(Body::dynamic(vec3(30.0, 0.0, 0.5)).with_box(1.0, 1.0, 1.0).with_mass(5.0).with_tag("crate"));
+        // Facing north, so x maps to left and right in the ears.
         let player = physics
             .add(Body::dynamic(vec3(0.0, 0.0, 1.0)).with_box(0.8, 0.8, 1.6).with_max_speed(25.0).with_tag("player"));
-        ctx.audio.sound("lift").looped().at(vec3(40.0, 0.0, 0.0)).distance(1.0, 20.0).play();
 
+        ctx.follow(player);
+        ctx.loop_on(lift, "lift");
         // Coins are sensors with a looping sound, so you can hear where they are.
-        let mut coins = HashMap::new();
         for (x, z) in [(5.0, 1.0), (14.0, 5.5), (25.0, 1.0), (40.0, 8.0)] {
-            let pos = vec3(x, 0.0, z);
-            let id = ctx.physics.add(Body::sensor(pos).with_sphere(0.6).with_tag("coin"));
-            let sound = ctx.audio.sound("coin").looped().at(pos).volume(0.3).distance(1.0, 25.0).play();
-            coins.insert(id, sound);
+            let coin = ctx.physics.add(Body::sensor(vec3(x, 0.0, z)).with_sphere(0.6).with_tag("coin"));
+            ctx.loop_on(coin, "coin").set_volume(0.3);
         }
 
         let run_sound = ctx.audio.sound("run").looped().volume(0.0).play();
-        Self { player, lift, coins, run_sound, score: 0, won: false }
+        Self { player, lift, run_sound, score: 0 }
     }
 }
 
 impl Scene for Platformer {
     fn start(&mut self, ctx: &mut Context) {
-        ctx.speech.speak("Collect the coins. Left and right to run, space to jump, S for score, escape to quit.");
+        ctx.speak("Collect the coins. Left and right to run, space to jump, S for score, escape to quit.");
     }
 
     fn update(&mut self, ctx: &mut Context) {
-        if ctx.input.pressed(Key::Escape) {
+        if ctx.pressed(Key::Escape) {
             ctx.quit();
         }
 
@@ -67,54 +64,43 @@ impl Scene for Platformer {
         let lift_up = (ctx.time.elapsed() % 8.0) < 4.0;
         ctx.physics.set_velocity(self.lift, vec3(0.0, 0.0, if lift_up { 2.0 } else { -2.0 }));
 
+        let run = ctx.input.axis(Key::Left, Key::Right);
         let mut velocity = ctx.physics.velocity(self.player);
-        let run = ctx.input.held(Key::Right) as i32 - ctx.input.held(Key::Left) as i32;
-        velocity.x = run as f32 * 6.0;
+        velocity.x = run * 6.0;
         ctx.physics.set_velocity(self.player, velocity);
-        if ctx.input.pressed(Key::Space) && ctx.physics.jump(self.player, 2.5) {
-            ctx.audio.play("jump");
+        if ctx.pressed(Key::Space) && ctx.physics.jump(self.player, 2.5) {
+            ctx.play("jump");
         }
-
-        let running = ctx.physics.on_ground(self.player) && run != 0;
+        let running = ctx.physics.on_ground(self.player) && run != 0.0;
         self.run_sound.set_volume(if running { 0.6 } else { 0.0 });
 
-        // Side view: the player faces "north", so x maps to left and right in the ears.
-        let pos = ctx.physics.position(self.player);
-        ctx.audio.set_listener(vec3(pos.x, 0.0, pos.z), 0.0);
-
-        for event in ctx.physics.events().to_vec() {
-            match event {
-                PhysicsEvent::Landed { body, speed, .. } if body == self.player => {
-                    ctx.audio.sound("land").volume((speed / 12.0).clamp(0.2, 1.0)).play();
-                    if speed > 15.0 {
-                        ctx.speech.speak("Ouch!");
-                    }
-                }
-                PhysicsEvent::CollisionStarted { a, b, .. } if a == self.player && ctx.physics.tag(b) == "crate" => {
-                    ctx.audio.play_at("push", ctx.physics.position(b));
-                }
-                PhysicsEvent::Entered { sensor, body } if body == self.player => {
-                    if let Some(sound) = self.coins.remove(&sensor) {
-                        sound.stop();
-                        ctx.physics.remove(sensor);
-                        self.score += 1;
-                        ctx.audio.sound("coin").pitch(1.5).play();
-                        ctx.speech.speak(format!("{} of 4 coins", self.score));
-                    }
-                }
-                _ => {}
+        if let Some(speed) = ctx.physics.landed(self.player) {
+            ctx.audio.sound("land").volume((speed / 12.0).clamp(0.2, 1.0)).play();
+            if speed > 15.0 {
+                ctx.speak("Ouch!");
             }
         }
-        if self.coins.is_empty() && !self.won {
-            self.won = true;
-            ctx.ui.message("won", "You collected every coin! Press enter to quit.");
+        if let Some((other, _)) = ctx.physics.collided(self.player)
+            && ctx.physics.tag(other) == "crate"
+        {
+            ctx.play_on(other, "push");
+        }
+        if let Some(coin) = ctx.physics.entered_tag(self.player, "coin") {
+            ctx.physics.remove(coin); // its looping sound stops by itself
+            self.score += 1;
+            ctx.audio.sound("coin").pitch(1.5).play();
+            ctx.speak(format!("{} of {COINS} coins", self.score));
+            if self.score == COINS {
+                ctx.ui.message("won", "You collected every coin! Press enter to quit.");
+            }
         }
         if ctx.ui.closed("won") {
             ctx.quit();
         }
 
-        if ctx.input.pressed(Key::S) {
-            ctx.speech.speak(format!("Score {}, position {:.0}", self.score, pos.x));
+        if ctx.pressed(Key::S) {
+            let x = ctx.physics.position(self.player).x;
+            ctx.speak(format!("Score {}, position {x:.0}", self.score));
         }
     }
 }

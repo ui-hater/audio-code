@@ -16,10 +16,36 @@ gives you what they need in one crate, and a full game fits in a few dozen lines
 - **Synth**: design clicks, beeps and effects in code
 - **Physics**: walls, floors, gravity, jumping, mass, forces, pushable objects, moving
   platforms, landing events, trigger zones and ray casts
+- **Levels from text maps**: draw walls with `#` and place things with letters
+- **Sounds that follow objects** (`ctx.loop_on(enemy, "growl")`) and ears that follow the
+  player (`ctx.follow(player)`)
+- **Saving** high scores and settings with `ctx.storage`
 - **Time**: frame delta, a scheduler (`after`, `every`), timers, cooldowns and intervals
 - **Input**: pressed / held / released keys, key repeat with your own timing, and typed text
 - **Scenes**: main menu, levels and pause screens as a simple stack
 - **wxWidgets** integration through [wxDragon](https://crates.io/crates/wxdragon) (optional)
+
+The smallest game is a single closure:
+
+```rust
+use audio_code::prelude::*;
+
+fn main() -> audio_code::Result<()> {
+    audio_code::run("Hello", |ctx| {
+        if ctx.once("intro") {
+            ctx.speak("Press space to beep, escape to quit.");
+        }
+        if ctx.pressed(Key::Space) {
+            ctx.audio.play_tone(440.0, 0.1);
+        }
+        if ctx.pressed(Key::Escape) {
+            ctx.quit();
+        }
+    })
+}
+```
+
+Bigger games use scenes:
 
 ```rust
 use audio_code::prelude::*;
@@ -91,13 +117,15 @@ All examples generate their sounds in code, so they work without any audio files
 | Example      | Shows                                                     | Run                                              |
 |--------------|-----------------------------------------------------------|--------------------------------------------------|
 | `hello`      | speech, beeps, quitting                                    | `cargo run --example hello`                      |
+| `clicker`    | a whole game in one closure, saved high score              | `cargo run --example clicker`                    |
 | `menus`      | main menu, options sub menu, text input, confirm dialog    | `cargo run --example menus`                      |
-| `beacon`     | 3D sound, walls, sensors, pause scene                      | `cargo run --example beacon`                     |
+| `beacon`     | text map maze, 3D sound, beacons, pause scene, best time   | `cargo run --example beacon`                     |
 | `platformer` | gravity, jumping, landing sounds, collecting coins         | `cargo run --example platformer`                 |
 | `wx_game`    | a game inside a wxWidgets window next to a native button   | `cargo run --example wx_game --features wxdragon`|
 
 ## Documentation
 
+- [Cheat sheet](docs/cheatsheet.md): the most used calls on one page
 - [Getting started](docs/getting-started.md): your first game, step by step
 - [Sound](docs/audio.md): playing, positioning, music, file lookup
 - [Speech](docs/speech.md): screen readers, history, braille
@@ -111,8 +139,8 @@ API reference: `cargo doc --open`.
 
 ## Design principles
 
-1. **One line for common things.** `ctx.audio.play("door")` finds `sounds/door.ogg`,
-   decodes and caches it, and plays it.
+1. **One line for common things.** `ctx.play("door")` finds `sounds/door.ogg`, decodes
+   and caches it, and plays it.
 2. **No crashes for small mistakes.** A missing sound prints a warning once and plays
    nothing.
 3. **Accessible by default.** Every UI element speaks, and the interface sounds work without

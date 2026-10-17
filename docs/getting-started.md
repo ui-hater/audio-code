@@ -16,7 +16,24 @@ Visual Studio "C++ ATL" component for speech).
 
 ## 2. The smallest game
 
-Every game has at least one **scene**. A scene is a struct that implements [`Scene`]. The
+The very smallest game is a closure that runs every frame:
+
+```rust
+use audio_code::prelude::*;
+
+fn main() -> audio_code::Result<()> {
+    audio_code::run("Bomb", |ctx| {
+        if ctx.once("intro") {
+            ctx.speak("Find the bomb!");
+        }
+        if ctx.pressed(Key::Escape) {
+            ctx.quit();
+        }
+    })
+}
+```
+
+That is fine for experiments. For real games, use **scenes**: every game has at least one. A scene is a struct that implements [`Scene`]. The
 engine calls `start` once and then `update` every frame (60 times per second by default).
 
 ```rust
@@ -170,8 +187,15 @@ fn main() -> audio_code::Result<()> {
 While the menu is open it owns the keyboard, so the arrow keys move through the menu and
 your game sees no key presses.
 
+## Shortcuts
+
+The most common calls have short forms directly on `ctx`: `ctx.speak(..)`, `ctx.play(..)`,
+`ctx.play_at(..)`, `ctx.pressed(..)` and `ctx.held(..)`. The [cheat sheet](cheatsheet.md)
+lists them all.
+
 ## Next steps
 
+- [Cheat sheet](cheatsheet.md)
 - [Sound](audio.md)
 - [Virtual UI](ui.md)
 - [Physics](physics.md)

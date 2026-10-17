@@ -55,9 +55,12 @@ pub mod audio;
 mod engine;
 mod error;
 pub mod input;
+pub mod level;
 pub mod math;
 pub mod physics;
+mod shortcuts;
 pub mod speech;
+pub mod storage;
 pub mod time;
 pub mod ui;
 mod window;
@@ -67,14 +70,44 @@ pub mod wx;
 pub use engine::{Context, Engine, Runner, Scene};
 pub use error::{Error, Result};
 
+/// The quickest way to start: a whole game as one closure that runs every frame.
+///
+/// ```no_run
+/// use audio_code::prelude::*;
+///
+/// fn main() -> audio_code::Result<()> {
+///     let mut score = 0;
+///     audio_code::run("Clicker", move |ctx| {
+///         if ctx.once("intro") {
+///             ctx.speak("Press space as often as you can. Escape quits.");
+///         }
+///         if ctx.pressed(Key::Space) {
+///             score += 1;
+///             ctx.audio.play_tone(400.0 + score as f32 * 10.0, 0.05);
+///         }
+///         if ctx.pressed(Key::Escape) {
+///             ctx.speak(format!("Your score: {score}"));
+///             ctx.quit();
+///         }
+///     })
+/// }
+/// ```
+///
+/// When the game grows, move to [`Scene`]s.
+pub fn run(title: &str, update: impl FnMut(&mut Context) + 'static) -> Result<()> {
+    Engine::new(title).run_fn(update)
+}
+
 /// Everything you normally need: `use audio_code::prelude::*;`
 pub mod prelude {
     pub use crate::audio::{Audio, Group, Sound, SoundData, Synth, Wave};
     pub use crate::engine::{Context, Engine, Scene};
     pub use crate::input::{Input, Key, Modifiers};
+    pub use crate::level::Level;
     pub use crate::math::{self, Vec2, Vec3, random, vec2, vec3};
     pub use crate::physics::{Body, BodyId, BodyKind, EARTH_GRAVITY, PhysicsEvent, Shape, World};
     pub use crate::speech::Speech;
+    pub use crate::storage::Storage;
     pub use crate::time::{Cooldown, Interval, Time, Timer};
     pub use crate::ui::{Confirm, Menu, Message, TextInput, Ui, UiEvent, UiSound, UiSounds, Value, Widget};
 }

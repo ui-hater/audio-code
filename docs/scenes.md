@@ -98,6 +98,23 @@ ctx.remove::<Progress>();
 The physics world, the audio cache and the UI stack are shared by all scenes. Call
 `ctx.physics.clear()` when a new level starts.
 
+## Saving
+
+`ctx.storage` keeps values between game runs. It is loaded at start and written when the
+game quits:
+
+```rust
+let best: u32 = ctx.storage.get_or("best", 0);
+ctx.storage.set("best", 120);
+ctx.storage.set("player_name", "Alex");
+ctx.storage.add("games_played", 1);
+ctx.storage.save()?;                    // write now (optional)
+```
+
+Values are stored as text in `<title>.save` in the working directory. Use
+`Engine::save_file("saves/game.save")` for another location. Anything that implements
+`Display` and `FromStr` can be stored.
+
 ## Engine settings
 
 ```rust
@@ -107,6 +124,8 @@ Engine::new("My game")
     .sound_dir("assets/sfx") // where sounds are looked up
     .echo_speech(true)       // print speech to the console
     .window_size(800, 600)
+    .gravity(EARTH_GRAVITY)  // physics gravity (default none)
+    .save_file("game.save")  // where ctx.storage is saved
     .run(MainMenu)
 ```
 

@@ -1,117 +1,133 @@
-//! Walk through a walled room with 3D sound and find the beacon.
+//! Walk through a maze with 3D sound and find the beacons. Your best time is saved.
 //!
 //! * Up / Down: walk forward / backward
 //! * Left / Right: turn 45 degrees
-//! * C: where is the beacon?  F: which way am I facing?
+//! * C: where is the next beacon?  F: which way am I facing?
 //! * Escape: pause menu
 //!
-//! All sounds are generated in code, so no files are needed.
+//! All sounds are generated with the synth, so no files are needed.
 //! Run with `cargo run --example beacon` and use headphones.
 
 use audio_code::prelude::*;
 
-const STEP: f32 = 1.0;
+const MAP: &str = "
+    ###########
+    #B....#..B#
+    #.###.#.#.#
+    #...#...#.#
+    ###.#####.#
+    #B........#
+    #.#######.#
+    #....P....#
+    ###########
+";
 
-struct Level {
+struct Maze {
     player: BodyId,
-    beacon: BodyId,
-    yaw: f32,
-    beacon_sound: Sound,
-    ping: Interval,
+    beacons: Vec<BodyId>,
+    clock: Timer,
 }
 
-fn make_sounds(audio: &mut Audio) {
-    // Short noise burst for footsteps.
-    audio.register("step", SoundData::generate(0.08, |t| (random::range(-1.0, 1.0)) * (-t * 60.0).exp() * 0.5));
-    // Dull thump for walls.
-    audio.register("wall", SoundData::generate(0.15, |t| (t * 90.0 * std::f32::consts::TAU).sin() * (-t * 25.0).exp()));
-    // Bright double beep for the beacon.
-    audio.register(
-        "beacon",
-        SoundData::generate(0.25, |t| {
-            let on = t < 0.08 || (0.12..0.2).contains(&t);
-            if on { (t * 1320.0 * std::f32::consts::TAU).sin() * 0.4 } else { 0.0 }
-        }),
-    );
-    audio.register("win", SoundData::generate(0.6, |t| (t * (440.0 + t * 800.0) * std::f32::consts::TAU).sin() * 0.3));
-}
-
-impl Level {
+impl Maze {
     fn new(ctx: &mut Context) -> Self {
-        make_sounds(&mut ctx.audio);
+        ctx.audio.register("step", Synth::noise().length(0.08).decay(60.0));
+        ctx.audio.register("wall", Synth::sine(90.0).length(0.15).decay(25.0).volume(0.8));
+        ctx.audio.register("beacon", Synth::sine(1320.0).length(0.08).then(Synth::silence(0.04)).then(Synth::sine(1320.0).length(0.08)).then(Synth::silence(0.8)));
+        ctx.audio.register("found", Synth::sine(440.0).sweep_to(1200.0).length(0.6).decay(4.0).volume(0.3));
 
-        // A 20 x 20 room made of four walls, with one wall in the middle.
-        let wall = |x: f32, y: f32, w: f32, d: f32| Body::fixed(vec3(x, y, 0.0)).with_box(w, d, 3.0).with_tag("wall");
-        ctx.physics.add(wall(0.0, 10.5, 22.0, 1.0));
-        ctx.physics.add(wall(0.0, -10.5, 22.0, 1.0));
-        ctx.physics.add(wall(10.5, 0.0, 1.0, 22.0));
-        ctx.physics.add(wall(-10.5, 0.0, 1.0, 22.0));
-        ctx.physics.add(wall(0.0, 2.0, 12.0, 1.0));
+        // Every character is a 2 meter tile: walls, the player start and three beacons.
+        let level = ctx.physics.build_level(MAP, 2.0);
+        let player = ctx.physics.add(Body::kinematic(level.point('P').unwrap()).with_sphere(0.4).with_tag("player"));
+        ctx.follow(player); // the ears go wherever the player goes and face where it faces
 
-        let player = ctx.physics.add(Body::kinematic(vec3(0.0, -8.0, 0.0)).with_sphere(0.4).with_tag("player"));
-        let spot = vec3(random::range(-8.0, 8.0), random::range(4.0, 8.0), 0.0);
-        let beacon = ctx.physics.add(Body::sensor(spot).with_sphere(1.0).with_tag("beacon"));
-
-        Self { player, beacon, yaw: 0.0, beacon_sound: Sound::none(), ping: Interval::new(1.0) }
+        let mut beacons = Vec::new();
+        for spot in level.points('B') {
+            let beacon = ctx.physics.add(Body::sensor(spot).with_sphere(0.8).with_tag("beacon"));
+            ctx.loop_on(beacon, "beacon"); // stops by itself when the beacon is removed
+            beacons.push(beacon);
+        }
+        Self { player, beacons, clock: Timer::new() }
     }
 }
 
-impl Scene for Level {
+impl Scene for Maze {
     fn start(&mut self, ctx: &mut Context) {
-        ctx.speech.speak("Find the beacon. Up and down to walk, left and right to turn. C locates the beacon.");
+        ctx.speak("Find all three beacons. Up and down to walk, left and right to turn. C locates the nearest beacon.");
     }
 
     fn update(&mut self, ctx: &mut Context) {
-        let level = self;
-        if ctx.input.pressed(Key::Escape) {
+        if ctx.pressed(Key::Escape) {
             ctx.push_scene(Pause);
-            return;
         }
-        if ctx.input.pressed(Key::Left) {
-            level.yaw = math::normalize_angle(level.yaw - 45.0);
-            ctx.speech.speak(math::direction_name(level.yaw));
-        }
-        if ctx.input.pressed(Key::Right) {
-            level.yaw = math::normalize_angle(level.yaw + 45.0);
-            ctx.speech.speak(math::direction_name(level.yaw));
+        if ctx.pressed(Key::Left) || ctx.pressed(Key::Right) {
+            let degrees = if ctx.pressed(Key::Left) { -45.0 } else { 45.0 };
+            let facing = ctx.physics.turn(self.player, degrees);
+            ctx.speak(math::direction_name(facing));
         }
 
         let forward = ctx.input.repeating(Key::Up, 0.35, 0.35);
         let backward = ctx.input.repeating(Key::Down, 0.35, 0.35);
         if forward || backward {
-            let dir = if forward { 1.0 } else { -1.0 };
-            let delta = math::forward(level.yaw) * STEP * dir;
-            let result = ctx.physics.move_by(level.player, delta);
-            if result.blocked {
-                ctx.audio.sound("wall").volume(0.8).play();
+            let step = if forward { 1.0 } else { -1.0 };
+            if ctx.physics.move_forward(self.player, step).blocked {
+                ctx.play("wall");
             } else {
                 ctx.audio.sound("step").random_pitch(0.85, 1.15).play();
             }
         }
 
-        if ctx.input.pressed(Key::C) {
-            let text = math::describe_position(ctx.physics.position(level.player), level.yaw, ctx.physics.position(level.beacon));
-            ctx.speech.speak(text);
+        if ctx.pressed(Key::C) {
+            let position = ctx.physics.position(self.player);
+            match ctx.physics.nearest_with_tag(position, "beacon") {
+                Some(beacon) => {
+                    let text = ctx.physics.describe(self.player, beacon);
+                    ctx.speak(text);
+                }
+                None => ctx.speak("No beacons left"),
+            }
         }
-        if ctx.input.pressed(Key::F) {
-            ctx.speech.speak(format!("Facing {}", math::direction_name(level.yaw)));
+        if ctx.pressed(Key::F) {
+            let facing = ctx.physics.facing(self.player);
+            ctx.speak(format!("Facing {}", math::direction_name(facing)));
         }
 
-        // The ears follow the player.
-        ctx.audio.set_listener(ctx.physics.position(level.player), level.yaw);
-
-        // Ping the beacon once per second at its position.
-        if level.ping.tick() {
-            level.beacon_sound = ctx.audio.sound("beacon").at(ctx.physics.position(level.beacon)).distance(1.0, 40.0).play();
+        if let Some(beacon) = ctx.physics.entered_tag(self.player, "beacon") {
+            ctx.physics.remove(beacon);
+            self.beacons.retain(|b| *b != beacon);
+            ctx.play("found");
+            if self.beacons.is_empty() {
+                self.finish(ctx);
+            } else {
+                ctx.speak(format!("Beacon found! {} left.", self.beacons.len()));
+            }
         }
-
-        let found = ctx.physics.events().iter().any(|e| matches!(e, PhysicsEvent::Entered { sensor, .. } if *sensor == level.beacon));
-        if found {
-            level.beacon_sound.stop();
-            ctx.audio.play("win");
-            ctx.speech.speak("You found the beacon! A new one appears.");
-            ctx.physics.set_position(level.beacon, vec3(random::range(-8.0, 8.0), random::range(-8.0, 8.0), 0.0));
+        if ctx.ui.closed("done") {
+            ctx.quit();
         }
+    }
+
+    // The clock should not run while the pause menu is open.
+    fn pause(&mut self, _ctx: &mut Context) {
+        self.clock.pause();
+    }
+
+    fn resume(&mut self, _ctx: &mut Context) {
+        self.clock.resume();
+    }
+}
+
+impl Maze {
+    fn finish(&mut self, ctx: &mut Context) {
+        let seconds = self.clock.elapsed_secs().round() as u32;
+        let best: u32 = ctx.storage.get_or("best_time", u32::MAX);
+        let mut text = format!("You found every beacon in {seconds} seconds.");
+        if seconds < best {
+            ctx.storage.set("best_time", seconds);
+            text.push_str(" That is a new record!");
+        } else {
+            text.push_str(&format!(" Your record is {best} seconds."));
+        }
+        ctx.ui.message("done", text);
     }
 }
 
@@ -139,5 +155,5 @@ impl Scene for Pause {
 }
 
 fn main() -> audio_code::Result<()> {
-    Engine::new("Beacon").echo_speech(true).run_with(Level::new)
+    Engine::new("Beacon").echo_speech(true).run_with(Maze::new)
 }

@@ -74,7 +74,10 @@ impl ApplicationHandler for App {
                 self.down.clear();
                 self.runner.focus_lost();
             }
-            WindowEvent::KeyboardInput { event, .. } => match event.state {
+            WindowEvent::KeyboardInput { event, is_synthetic, .. } => match event.state {
+                // Synthetic presses are sent on focus gain for keys that were already down
+                // (e.g. Alt+Tab); they must not count as fresh key presses.
+                ElementState::Pressed if is_synthetic => {}
                 ElementState::Pressed => {
                     let key = self.down.get(&event.physical_key).copied().or_else(|| map_key(&event));
                     if let Some(key) = key {

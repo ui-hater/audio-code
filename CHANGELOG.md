@@ -24,3 +24,15 @@ First version.
 - Physics: `EARTH_GRAVITY`, `Engine::gravity`, `World::jump`, `World::apply_force`, mass and
   momentum exchange, terminal velocity (`max_speed`), `Landed` event, pushable bodies and
   moving platforms that carry bodies
+- Easier game code:
+  - `audio_code::run(title, closure)` / `Engine::run_fn` for games without a scene struct
+  - shortcuts on `Context`: `speak`, `play`, `play_at`, `pressed`, `held`, `once`
+  - `ctx.follow(body)`: the listener follows a body's position and facing
+  - `ctx.loop_on`, `ctx.play_on`, `ctx.attach`: sounds follow bodies and stop when removed
+  - levels from text maps: `World::build_level`, `Level::point(s)`
+  - `Body::facing`, `World::turn`, `move_forward`, `strafe`, `describe`, `distance`
+  - event shortcuts: `landed`, `collided`, `entered`, `entered_tag`, `left`, `triggered`
+  - `Input::axis` and `Input::movement`
+  - `ctx.storage`: key-value saving, written on quit (`Engine::save_file`)
+  - cheat sheet in `docs/cheatsheet.md`
+- Synthetic key presses on window focus are ignored

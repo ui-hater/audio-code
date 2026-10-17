@@ -1,15 +1,17 @@
 //! The game loop: [`Engine`], [`Scene`] and [`Context`].
 
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::audio::Audio;
 use crate::error::Result;
 use crate::input::{Input, Key, KeyEvent};
-use crate::physics::World;
+use crate::physics::{BodyId, World};
+use crate::shortcuts::Attached;
 use crate::speech::Speech;
+use crate::storage::Storage;
 use crate::time::Time;
 use crate::ui::{Ui, UiEvent};
 
@@ -75,6 +77,11 @@ pub struct Context {
     pub ui: Ui,
     /// Physics world.
     pub physics: World,
+    /// Values that are saved when the game quits (high scores, settings).
+    pub storage: Storage,
+    pub(crate) follow: Option<BodyId>,
+    pub(crate) attached: Vec<Attached>,
+    pub(crate) once: HashSet<String>,
     title: String,
     quit: bool,
     change: Option<SceneChange>,
@@ -186,6 +193,7 @@ pub struct Engine {
     pub(crate) headless: bool,
     pub(crate) nvda_dll: Option<PathBuf>,
     pub(crate) gravity: glam::Vec3,
+    pub(crate) save_file: Option<PathBuf>,
 }
 
 impl Engine {
@@ -202,6 +210,7 @@ impl Engine {
             headless: false,
             nvda_dll: None,
             gravity: glam::Vec3::ZERO,
+            save_file: None,
         }
     }
 
@@ -221,6 +230,12 @@ impl Engine {
     /// Default is none (top down games). Can be changed later with `ctx.physics.set_gravity`.
     pub fn gravity(mut self, gravity: glam::Vec3) -> Self {
         self.gravity = gravity;
+        self
+    }
+
+    /// File used by [`Context::storage`] (default `<title>.save` in the working directory).
+    pub fn save_file(mut self, path: impl Into<PathBuf>) -> Self {
+        self.save_file = Some(path.into());
         self
     }
 
@@ -299,10 +314,30 @@ impl Engine {
         self.run_wx(Lazy::new(build))
     }
 
+    /// Runs a game written as a single closure that is called every frame.
+    /// The closure can keep its own state in captured variables. See [`crate::run`].
+    pub fn run_fn(self, update: impl FnMut(&mut Context) + 'static) -> Result<()> {
+        self.run(FnScene(update))
+    }
+
+    /// Like [`Engine::build`] for a closure game.
+    pub fn build_fn(self, update: impl FnMut(&mut Context) + 'static) -> Runner {
+        self.build(FnScene(update))
+    }
+
     /// Creates the [`Context`] and runner without a window. Window backends use this; you
     /// can use it for tests or to drive the engine from your own loop.
     pub fn build(self, scene: impl Scene) -> Runner {
         Runner::new(self, Box::new(scene))
+    }
+}
+
+/// A scene made from a closure.
+struct FnScene<F>(F);
+
+impl<F: FnMut(&mut Context) + 'static> Scene for FnScene<F> {
+    fn update(&mut self, ctx: &mut Context) {
+        (self.0)(ctx);
     }
 }
 
@@ -394,6 +429,14 @@ impl Runner {
                 world.set_gravity(config.gravity);
                 world
             },
+            storage: if config.headless {
+                Storage::in_memory()
+            } else {
+                Storage::open(config.save_file.clone().unwrap_or_else(|| crate::storage::default_file(&config.title)))
+            },
+            follow: None,
+            attached: Vec::new(),
+            once: HashSet::new(),
             title: config.title.clone(),
             quit: false,
             change: None,
@@ -483,6 +526,7 @@ impl Runner {
 
             scene.update(&mut self.ctx);
         }
+        self.ctx.sync_world();
         self.apply_change();
 
         if self.ctx.quit {
@@ -527,6 +571,9 @@ impl Runner {
     pub fn shutdown(&mut self) {
         while let Some(mut scene) = self.scenes.pop() {
             scene.end(&mut self.ctx);
+        }
+        if let Err(e) = self.ctx.storage.save() {
+            eprintln!("audio-code: could not save storage: {e}");
         }
         self.ctx.quit = true;
     }

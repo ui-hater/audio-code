@@ -78,6 +78,22 @@ ctx.audio.set_default_distance(1.0, 40.0);
 ctx.audio.set_default_rolloff(0.7);
 ```
 
+## Sounds that follow objects
+
+Instead of moving sounds by hand every frame, attach them to physics bodies:
+
+```rust
+ctx.follow(player);                    // the listener follows the player's position and facing
+ctx.loop_on(enemy, "growl");           // loops at the enemy, moves with it
+ctx.play_on(car, "horn");              // plays once, moves with the car
+let hum = ctx.audio.sound("hum").volume(0.3).looped().at(pos).play();
+ctx.attach(machine, hum);              // any positioned sound
+ctx.stop_sounds_on(enemy);
+```
+
+When a body is removed with `ctx.physics.remove(id)`, its attached sounds stop by
+themselves.
+
 ## Music
 
 ```rust

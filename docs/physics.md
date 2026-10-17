@@ -34,6 +34,43 @@ let door = ctx.physics.add(Body::sensor(vec3(0.0, 9.0, 0.0)).with_box(2.0, 1.0, 
 `with_friction` (ground damping), `with_damping` (air), `with_gravity_scale`, and
 `with_user_data` (your own number, e.g. an index into your enemy list).
 
+## Levels from text maps
+
+```rust
+const MAP: &str = "
+    ##########
+    #P...#..C#
+    #....#...#
+    #..C.....#
+    ##########
+";
+
+let level = ctx.physics.build_level(MAP, 2.0);   // every character is a 2 x 2 meter tile
+let player = ctx.physics.add(Body::kinematic(level.point('P').unwrap()).with_sphere(0.4));
+for spot in level.points('C') {
+    let coin = ctx.physics.add(Body::sensor(spot).with_sphere(0.5).with_tag("coin"));
+    ctx.loop_on(coin, "coin");
+}
+```
+
+`#` becomes a wall (tag `"wall"`, 3 m high), `.` and spaces are floor, and every other
+character is a point you can look up. The first line is north. The indentation of the map
+does not matter.
+
+## Facing, turning and walking
+
+Shapes never rotate, but every body has a `facing` (compass degrees), which is ideal for
+the player:
+
+```rust
+ctx.physics.turn(player, 45.0);                          // returns the new facing
+let result = ctx.physics.move_forward(player, 1.0);      // or -1.0 to walk backwards
+ctx.physics.strafe(player, 1.0);                         // sideways to the right
+ctx.physics.facing(player);
+ctx.speak(ctx.physics.describe(player, beacon));         // "2 o'clock, 8 meters"
+ctx.follow(player);                                      // listener uses position and facing
+```
+
 ## Moving the player: `move_by`
 
 `move_by` moves a body immediately. It slides along walls and tells you what happened:
@@ -132,6 +169,17 @@ for event in ctx.physics.events() {
         PhysicsEvent::Left { sensor, body } => {}
     }
 }
+```
+
+Usually you only care about one body. There are shortcuts for that:
+
+```rust
+if let Some(speed) = ctx.physics.landed(player) { /* ... */ }
+if let Some((other, speed)) = ctx.physics.collided(player) { /* ... */ }
+if let Some(coin) = ctx.physics.entered_tag(player, "coin") { /* ... */ }
+if let Some(zone) = ctx.physics.entered(player) { /* any sensor */ }
+if let Some(zone) = ctx.physics.left(player) { /* ... */ }
+if let Some(who) = ctx.physics.triggered(trap) { /* something entered the trap */ }
 ```
 
 `event.involves(id)` and `event.other(id)` help filter events. If you need to change
