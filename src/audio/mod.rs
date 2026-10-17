@@ -36,6 +36,7 @@
 
 mod data;
 mod mixer;
+mod synth;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -49,6 +50,7 @@ use glam::Vec3;
 
 pub use data::SoundData;
 pub use mixer::Group;
+pub use synth::{Synth, Wave};
 
 use crate::error::{Error, Result};
 use data::SoundSlot;
@@ -237,7 +239,8 @@ impl Audio {
         Ok(count)
     }
 
-    /// Registers sound data generated in code under a name, so it can be played like a file.
+    /// Registers sound data generated in code (or a [`Synth`]) under a name, so it can be
+    /// played like a file. Registering the same name again replaces the sound.
     ///
     /// ```no_run
     /// # use audio_code::prelude::*;
@@ -246,8 +249,8 @@ impl Audio {
     /// ctx.audio.play("beep");
     /// # }
     /// ```
-    pub fn register(&mut self, name: impl Into<String>, data: SoundData) {
-        self.cache.insert(name.into(), Arc::new(SoundSlot::ready(data)));
+    pub fn register(&mut self, name: impl Into<String>, data: impl Into<SoundData>) {
+        self.cache.insert(name.into(), Arc::new(SoundSlot::ready(data.into())));
     }
 
     /// Whether a sound with this name is loaded or registered.

@@ -11,7 +11,7 @@
 //! ```no_run
 //! # use audio_code::prelude::*;
 //! # fn f(ctx: &mut Context) {
-//! ctx.physics.set_gravity(vec3(0.0, 0.0, -9.81));
+//! ctx.physics.set_gravity(EARTH_GRAVITY);
 //! ctx.physics.add(Body::fixed(vec3(0.0, 0.0, -0.5)).with_box(100.0, 100.0, 1.0).with_tag("floor"));
 //! let player = ctx.physics.add(Body::dynamic(vec3(0.0, 0.0, 1.0)).with_box(0.6, 0.6, 1.8).with_tag("player"));
 //!
@@ -27,6 +27,9 @@
 use std::collections::{BTreeMap, HashSet};
 
 use glam::Vec3;
+
+/// Gravity on earth: 9.81 m/s² downwards (towards -z).
+pub const EARTH_GRAVITY: Vec3 = Vec3::new(0.0, 0.0, -9.81);
 
 /// Identifies a body in the [`World`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -86,8 +89,18 @@ pub struct Body {
     pub tag: String,
     /// Free number for your own data, e.g. an index into your entity list.
     pub user_data: u64,
+    /// Mass in kilograms (dynamic bodies). Heavier bodies push lighter ones further and lose
+    /// less speed when they collide.
+    pub mass: f32,
+    /// Speed limit in meters per second, e.g. a terminal velocity when falling.
+    /// `f32::INFINITY` (the default) means no limit.
+    pub max_speed: f32,
     /// Whether the body touched the ground (something below it) during the last step.
     pub on_ground: bool,
+    /// The body this one stands on, if any. Bodies standing on a moving kinematic body
+    /// (a lift, a platform) are carried along.
+    pub ground: Option<BodyId>,
+    force: Vec3,
 }
 
 impl Body {
@@ -103,7 +116,11 @@ impl Body {
             damping: 0.0,
             tag: String::new(),
             user_data: 0,
+            mass: 1.0,
+            max_speed: f32::INFINITY,
             on_ground: false,
+            ground: None,
+            force: Vec3::ZERO,
         }
     }
 
@@ -175,6 +192,18 @@ impl Body {
         self
     }
 
+    /// Sets the mass in kilograms (default 1.0).
+    pub fn with_mass(mut self, mass: f32) -> Self {
+        self.mass = mass.max(0.001);
+        self
+    }
+
+    /// Sets a speed limit in meters per second (terminal velocity).
+    pub fn with_max_speed(mut self, max_speed: f32) -> Self {
+        self.max_speed = max_speed.max(0.0);
+        self
+    }
+
     /// Sets user data.
     pub fn with_user_data(mut self, data: u64) -> Self {
         self.user_data = data;
@@ -221,6 +250,16 @@ pub enum PhysicsEvent {
         /// Second body.
         b: BodyId,
     },
+    /// A dynamic body touched the ground after being in the air. Perfect for landing sounds
+    /// and fall damage.
+    Landed {
+        /// The body that landed.
+        body: BodyId,
+        /// What it landed on.
+        on: BodyId,
+        /// Falling speed at impact in meters per second.
+        speed: f32,
+    },
     /// A body entered a sensor.
     Entered {
         /// The sensor.
@@ -242,6 +281,7 @@ impl PhysicsEvent {
     pub fn involves(&self, id: BodyId) -> bool {
         match *self {
             PhysicsEvent::CollisionStarted { a, b, .. } | PhysicsEvent::CollisionEnded { a, b } => a == id || b == id,
+            PhysicsEvent::Landed { body, on, .. } => body == id || on == id,
             PhysicsEvent::Entered { sensor, body } | PhysicsEvent::Left { sensor, body } => sensor == id || body == id,
         }
     }
@@ -250,6 +290,7 @@ impl PhysicsEvent {
     pub fn other(&self, id: BodyId) -> Option<BodyId> {
         let (x, y) = match *self {
             PhysicsEvent::CollisionStarted { a, b, .. } | PhysicsEvent::CollisionEnded { a, b } => (a, b),
+            PhysicsEvent::Landed { body, on, .. } => (body, on),
             PhysicsEvent::Entered { sensor, body } | PhysicsEvent::Left { sensor, body } => (sensor, body),
         };
         if x == id {
@@ -377,10 +418,15 @@ impl World {
         }
     }
 
-    /// Sets gravity, e.g. `vec3(0.0, 0.0, -9.81)` for earth. Default is no gravity, which
-    /// suits top down games.
+    /// Sets gravity, e.g. [`EARTH_GRAVITY`]. Default is no gravity, which suits top down
+    /// games. Also available as [`Engine::gravity`](crate::Engine::gravity).
     pub fn set_gravity(&mut self, gravity: Vec3) {
         self.gravity = gravity;
+    }
+
+    /// Direction pointing away from gravity (`+z` when there is no gravity).
+    pub fn up(&self) -> Vec3 {
+        (-self.gravity).normalize_or(Vec3::Z)
     }
 
     /// Current gravity.
@@ -450,6 +496,40 @@ impl World {
         if let Some(b) = self.get_mut(id) {
             b.velocity += impulse;
         }
+    }
+
+    /// Pushes a body with a force in newtons during the next physics step, e.g. wind,
+    /// a conveyor belt or a rocket. Call it every frame for a continuous force.
+    pub fn apply_force(&mut self, id: BodyId, force: Vec3) {
+        if let Some(b) = self.get_mut(id) {
+            b.force += force;
+        }
+    }
+
+    /// Makes a body standing on the ground jump so that it reaches `height` meters,
+    /// taking gravity into account. Returns `false` (and does nothing) while in the air.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context, player: BodyId) {
+    /// if ctx.input.pressed(Key::Space) && ctx.physics.jump(player, 1.5) {
+    ///     ctx.audio.play("jump");
+    /// }
+    /// # }
+    /// ```
+    pub fn jump(&mut self, id: BodyId, height: f32) -> bool {
+        let (up, gravity) = (self.up(), self.gravity.length());
+        let Some(b) = self.get_mut(id) else {
+            return false;
+        };
+        let g = gravity * b.gravity_scale;
+        if !b.on_ground || g <= 0.0 {
+            return false;
+        }
+        let speed = (2.0 * g * height.max(0.0)).sqrt();
+        b.velocity += up * (speed - b.velocity.dot(up));
+        b.on_ground = false;
+        true
     }
 
     /// Whether a body stands on something.
@@ -613,12 +693,47 @@ impl World {
             let Some((other, n, depth)) = push else {
                 break;
             };
+            // How much of the overlap the other body takes: none for walls, all of it when a
+            // kinematic body pushes a dynamic one, shared by mass between dynamic bodies.
+            let other_body = &self.bodies[&other];
+            let share = match (body.kind, other_body.kind) {
+                (BodyKind::Kinematic, BodyKind::Dynamic) => 1.0,
+                (BodyKind::Dynamic, BodyKind::Dynamic) => body.mass / (body.mass + other_body.mass),
+                _ => 0.0,
+            };
+            let mut moved_other = 0.0;
+            if share > 0.0 {
+                let old = other_body.position;
+                if let Some(o) = self.bodies.get_mut(&other) {
+                    o.position -= n * depth * share;
+                }
+                if self.obstructed(other, id, -n) {
+                    // Something solid is behind it (a crate against a wall): it does not move.
+                    if let Some(o) = self.bodies.get_mut(&other) {
+                        o.position = old;
+                    }
+                } else {
+                    moved_other = share;
+                }
+            }
             if let Some(b) = self.bodies.get_mut(&id) {
-                b.position += n * depth;
+                b.position += n * depth * (1.0 - moved_other);
             }
             contacts.push((other, n, depth));
         }
         contacts
+    }
+
+    /// Whether body `id`, pushed in `direction`, now overlaps a solid in that direction
+    /// (ignoring `pusher`).
+    fn obstructed(&self, id: BodyId, pusher: BodyId, direction: Vec3) -> bool {
+        let body = &self.bodies[&id];
+        self.bodies.iter().any(|(other_id, other)| {
+            *other_id != id
+                && *other_id != pusher
+                && other.is_solid()
+                && penetration(body, other).is_some_and(|(n, _)| n.dot(direction) < -0.5)
+        })
     }
 
     fn update_sensors_for(&mut self, id: BodyId) {
@@ -648,55 +763,69 @@ impl World {
             return;
         }
         let ids: Vec<BodyId> = self.bodies.keys().copied().collect();
+        let gravity = self.gravity;
+        let up = self.up();
         let mut touching = HashSet::new();
 
+        // Kinematic bodies move first, so bodies standing on them can be carried along.
+        let mut carried = Vec::new();
+        for (id, body) in self.bodies.iter_mut() {
+            if body.kind == BodyKind::Kinematic {
+                let delta = body.velocity * dt;
+                body.position += delta;
+                if delta != Vec3::ZERO {
+                    carried.push((*id, delta));
+                }
+            }
+        }
+
         for &id in &ids {
-            let gravity = self.gravity;
             let Some(body) = self.bodies.get_mut(&id) else {
                 continue;
             };
-            match body.kind {
-                BodyKind::Fixed | BodyKind::Sensor => continue,
-                BodyKind::Kinematic => {
-                    body.position += body.velocity * dt;
-                    continue;
-                }
-                BodyKind::Dynamic => {}
+            if body.kind != BodyKind::Dynamic {
+                continue;
             }
-            body.velocity += gravity * body.gravity_scale * dt;
+            if let Some((_, delta)) = carried.iter().find(|(platform, _)| Some(*platform) == body.ground) {
+                body.position += *delta;
+            }
+
+            let force = std::mem::take(&mut body.force);
+            body.velocity += (gravity * body.gravity_scale + force / body.mass) * dt;
             if body.damping > 0.0 {
                 body.velocity *= (1.0 - body.damping * dt).max(0.0);
             }
             if body.on_ground && body.friction > 0.0 {
                 let keep = (1.0 - body.friction * dt).max(0.0);
-                let up = (-gravity).normalize_or(Vec3::Z);
                 let vertical = up * body.velocity.dot(up);
                 body.velocity = vertical + (body.velocity - vertical) * keep;
             }
+            if body.max_speed.is_finite() {
+                body.velocity = body.velocity.clamp_length_max(body.max_speed);
+            }
 
+            let was_on_ground = body.on_ground;
             let delta = body.velocity * dt;
             let size = body.shape.half_extents().min_element().max(0.01);
             let substeps = ((delta.length() / size).ceil() as usize).clamp(1, 64);
             let step = delta / substeps as f32;
-            let mut on_ground = false;
+            let mut ground = None;
+            let mut landing_speed = 0.0f32;
             for _ in 0..substeps {
                 if let Some(b) = self.bodies.get_mut(&id) {
                     b.position += step;
                 }
                 for (other, n, _) in self.resolve(id) {
-                    let b = self.bodies.get_mut(&id).expect("body exists");
-                    let into = b.velocity.dot(n);
-                    if into < 0.0 {
-                        // Remove the velocity going into the surface, bounce if wanted.
-                        b.velocity -= n * into * (1.0 + b.bounciness);
+                    let impact = self.bounce(id, other, n);
+                    if impact > 0.0 {
                         let key = pair(id, other);
                         if !self.contacts.contains(&key) && !touching.contains(&key) {
-                            self.events.push(PhysicsEvent::CollisionStarted { a: id, b: other, speed: -into });
+                            self.events.push(PhysicsEvent::CollisionStarted { a: id, b: other, speed: impact });
                         }
                     }
-                    let up = (-self.gravity).normalize_or(Vec3::Z);
                     if n.dot(up) > 0.7 {
-                        on_ground = true;
+                        ground = Some(other);
+                        landing_speed = landing_speed.max(impact);
                     }
                     touching.insert(pair(id, other));
                 }
@@ -704,7 +833,13 @@ impl World {
             // A body resting on the floor is pushed into it by gravity every step and so keeps
             // its contact; a body that moved away loses it.
             if let Some(b) = self.bodies.get_mut(&id) {
-                b.on_ground = on_ground;
+                b.on_ground = ground.is_some();
+                b.ground = ground;
+            }
+            if let (false, Some(on)) = (was_on_ground, ground)
+                && landing_speed > 0.0
+            {
+                self.events.push(PhysicsEvent::Landed { body: id, on, speed: landing_speed });
             }
         }
 
@@ -716,6 +851,35 @@ impl World {
         for &id in &ids {
             self.update_sensors_for(id);
         }
+    }
+
+    /// Changes the velocities of `id` and `other` after they touched along normal `n`
+    /// (pointing towards `id`). Returns the impact speed, 0.0 if they were moving apart.
+    fn bounce(&mut self, id: BodyId, other: BodyId, n: Vec3) -> f32 {
+        let (Some(a), Some(b)) = (self.bodies.get(&id), self.bodies.get(&other)) else {
+            return 0.0;
+        };
+        let other_velocity = if b.kind == BodyKind::Fixed { Vec3::ZERO } else { b.velocity };
+        let closing = (a.velocity - other_velocity).dot(n);
+        if closing >= 0.0 {
+            return 0.0;
+        }
+        let restitution = a.bounciness.max(b.bounciness);
+        if b.kind == BodyKind::Dynamic {
+            // Exchange momentum like billiard balls.
+            let (ma, mb) = (a.mass, b.mass);
+            let j = -(1.0 + restitution) * closing / (1.0 / ma + 1.0 / mb);
+            if let Some(a) = self.bodies.get_mut(&id) {
+                a.velocity += n * (j / ma);
+            }
+            if let Some(b) = self.bodies.get_mut(&other) {
+                b.velocity -= n * (j / mb);
+            }
+        } else if let Some(a) = self.bodies.get_mut(&id) {
+            // Walls and platforms do not move: remove the speed going into them.
+            a.velocity -= n * closing * (1.0 + restitution);
+        }
+        -closing
     }
 }
 
@@ -813,5 +977,116 @@ mod tests {
         let hit = w.raycast(w.position(p), Vec3::Y, 50.0, Some(p)).unwrap();
         assert_eq!(hit.body, target);
         assert!((hit.distance - 9.5).abs() < 1e-3);
+    }
+
+    fn earth() -> (World, BodyId) {
+        let mut w = World::new();
+        w.set_gravity(EARTH_GRAVITY);
+        let floor = w.add(Body::fixed(vec3(0.0, 0.0, -0.5)).with_box(100.0, 100.0, 1.0));
+        (w, floor)
+    }
+
+    fn run(w: &mut World, seconds: f32) -> Vec<PhysicsEvent> {
+        let mut events = Vec::new();
+        for _ in 0..(seconds * 60.0) as usize {
+            w.clear_events();
+            w.step(1.0 / 60.0);
+            events.extend_from_slice(w.events());
+        }
+        events
+    }
+
+    #[test]
+    fn landed_event_reports_fall_speed() {
+        let (mut w, floor) = earth();
+        let ball = w.add(Body::dynamic(vec3(0.0, 0.0, 5.5)).with_sphere(0.5));
+        let events = run(&mut w, 2.0);
+        let landed: Vec<_> = events.iter().filter(|e| matches!(e, PhysicsEvent::Landed { .. })).collect();
+        assert_eq!(landed.len(), 1);
+        let PhysicsEvent::Landed { body, on, speed } = landed[0] else { unreachable!() };
+        assert_eq!((*body, *on), (ball, floor));
+        // Falling 5 m: v = sqrt(2 * 9.81 * 5) ≈ 9.9 m/s.
+        assert!((speed - 9.9).abs() < 0.6, "speed {speed}");
+    }
+
+    #[test]
+    fn jump_reaches_height() {
+        let (mut w, _) = earth();
+        let p = w.add(Body::dynamic(vec3(0.0, 0.0, 1.0)).with_box(1.0, 1.0, 2.0));
+        run(&mut w, 0.5);
+        assert!(w.on_ground(p));
+        assert!(w.jump(p, 2.0));
+        assert!(!w.jump(p, 2.0), "no double jump");
+        let mut highest: f32 = 0.0;
+        for _ in 0..120 {
+            w.step(1.0 / 60.0);
+            highest = highest.max(w.position(p).z);
+        }
+        assert!((highest - 3.0).abs() < 0.15, "highest {highest}");
+    }
+
+    #[test]
+    fn forces_mass_and_speed_limit() {
+        let mut w = World::new();
+        let light = w.add(Body::dynamic(Vec3::ZERO));
+        let heavy = w.add(Body::dynamic(vec3(10.0, 0.0, 0.0)).with_mass(10.0));
+        w.apply_force(light, vec3(60.0, 0.0, 0.0));
+        w.apply_force(heavy, vec3(60.0, 0.0, 0.0));
+        w.step(1.0 / 60.0);
+        assert!((w.velocity(light).x - 1.0).abs() < 1e-4);
+        assert!((w.velocity(heavy).x - 0.1).abs() < 1e-4);
+        // The force only lasts one step.
+        w.step(1.0 / 60.0);
+        assert!((w.velocity(light).x - 1.0).abs() < 1e-4);
+
+        let (mut w, _) = earth();
+        let rock = w.add(Body::dynamic(vec3(0.0, 0.0, 100.0)).with_max_speed(5.0));
+        run(&mut w, 1.0);
+        assert!(w.velocity(rock).length() <= 5.0 + 1e-3);
+    }
+
+    #[test]
+    fn heavy_ball_pushes_light_ball() {
+        let mut w = World::new();
+        let heavy = w.add(
+            Body::dynamic(Vec3::ZERO).with_sphere(0.5).with_mass(10.0).with_bounciness(1.0).with_velocity(vec3(5.0, 0.0, 0.0)),
+        );
+        let light = w.add(Body::dynamic(vec3(2.0, 0.0, 0.0)).with_sphere(0.5).with_bounciness(1.0));
+        let events = run(&mut w, 0.5);
+        assert!(events.iter().any(|e| matches!(e, PhysicsEvent::CollisionStarted { .. })));
+        // Elastic collision: the light ball flies off at about 9.1 m/s, the heavy one keeps 4.1.
+        assert!((w.velocity(light).x - 9.09).abs() < 0.2, "light {}", w.velocity(light).x);
+        assert!((w.velocity(heavy).x - 4.09).abs() < 0.2, "heavy {}", w.velocity(heavy).x);
+    }
+
+    #[test]
+    fn player_pushes_crate_until_wall() {
+        let (mut w, _) = earth();
+        w.add(Body::fixed(vec3(5.0, 0.0, 1.0)).with_box(1.0, 10.0, 2.0));
+        let crate_ = w.add(Body::dynamic(vec3(2.0, 0.0, 0.5)).with_box(1.0, 1.0, 1.0));
+        let player = w.add(Body::kinematic(vec3(0.0, 0.0, 0.5)).with_box(1.0, 1.0, 1.0));
+        run(&mut w, 0.3);
+        let mut blocked = false;
+        for _ in 0..40 {
+            blocked = w.move_by(player, vec3(0.1, 0.0, 0.0)).blocked;
+            run(&mut w, 1.0 / 60.0);
+        }
+        // The crate ends at the wall (x = 4.0) and the player behind it.
+        assert!((w.position(crate_).x - 4.0).abs() < 0.1, "crate {}", w.position(crate_).x);
+        assert!(w.position(player).x < 3.1);
+        assert!(blocked);
+    }
+
+    #[test]
+    fn platforms_carry_bodies() {
+        let mut w = World::new();
+        w.set_gravity(EARTH_GRAVITY);
+        let lift = w.add(Body::kinematic(Vec3::ZERO).with_box(4.0, 4.0, 1.0).with_velocity(vec3(1.0, 0.0, 0.0)));
+        let p = w.add(Body::dynamic(vec3(0.0, 0.0, 1.5)).with_box(1.0, 1.0, 1.0));
+        run(&mut w, 0.5);
+        assert_eq!(w.get(p).unwrap().ground, Some(lift));
+        let offset = w.position(p).x - w.position(lift).x;
+        run(&mut w, 1.5);
+        assert!((w.position(p).x - w.position(lift).x - offset).abs() < 0.02);
     }
 }

@@ -120,6 +120,7 @@ pub struct Menu {
     positions: bool,
     close_on_activate: bool,
     sounds: Option<UiSounds>,
+    sound_overrides: Vec<(UiSound, Option<String>)>,
     editing: Option<usize>,
 }
 
@@ -136,6 +137,7 @@ impl Menu {
             positions: true,
             close_on_activate: false,
             sounds: None,
+            sound_overrides: Vec::new(),
             editing: None,
         }
     }
@@ -219,6 +221,21 @@ impl Menu {
         self
     }
 
+    /// Changes one sound for this menu only, e.g. a special click for the main menu.
+    /// `None` makes it silent. All other sounds stay as they are.
+    pub fn sound(mut self, kind: UiSound, name: Option<&str>) -> Self {
+        self.sound_overrides.push((kind, name.map(String::from)));
+        self
+    }
+
+    fn play(&self, ui: &mut UiContext<'_>, kind: UiSound) {
+        match self.sound_overrides.iter().rev().find(|(k, _)| *k == kind) {
+            Some((_, Some(name))) => ui.play_named(name),
+            Some((_, None)) => {}
+            None => ui.play(kind, self.sounds.as_ref()),
+        }
+    }
+
     /// Start with the item `id` focused.
     pub fn focus(mut self, id: &str) -> Self {
         if let Some(i) = self.items.iter().position(|it| it.id == id) {
@@ -266,17 +283,21 @@ impl Menu {
     }
 
     fn move_to(&mut self, index: usize, ui: &mut UiContext<'_>) {
+        self.move_with_sound(index, UiSound::Navigate, ui);
+    }
+
+    fn move_with_sound(&mut self, index: usize, sound: UiSound, ui: &mut UiContext<'_>) {
         if index == self.index {
-            ui.play(UiSound::Edge, self.sounds.as_ref());
+            self.play(ui, UiSound::Edge);
         } else {
+            self.play(ui, sound);
             self.index = index;
-            ui.play(UiSound::Navigate, self.sounds.as_ref());
         }
         self.announce(ui, false);
     }
 
     fn changed(&mut self, ui: &mut UiContext<'_>) {
-        ui.play(UiSound::Change, self.sounds.as_ref());
+        self.play(ui, UiSound::Change);
         self.speak_value(ui);
         if let Some(item) = self.current()
             && let Some(value) = item.value()
@@ -328,11 +349,11 @@ impl Menu {
         match found {
             Some(i) if i != self.index => {
                 self.index = i;
-                ui.play(UiSound::Navigate, self.sounds.as_ref());
+                self.play(ui, UiSound::Navigate);
                 self.announce(ui, false);
             }
             Some(_) => self.announce(ui, false),
-            None => ui.play(UiSound::Edge, self.sounds.as_ref()),
+            None => self.play(ui, UiSound::Edge),
         }
     }
 }
@@ -344,7 +365,7 @@ impl Widget for Menu {
 
     fn open(&mut self, ui: &mut UiContext<'_>) {
         self.index = self.index.min(self.items.len().saturating_sub(1));
-        ui.play(UiSound::Open, self.sounds.as_ref());
+        self.play(ui, UiSound::Open);
         self.announce(ui, true);
     }
 
@@ -371,11 +392,21 @@ impl Widget for Menu {
         let last = self.items.len() - 1;
 
         if ui.key(Key::Up) {
-            let to = if self.index > 0 { self.index - 1 } else if self.wrap { last } else { 0 };
-            self.move_to(to, ui);
+            if self.index > 0 {
+                self.move_to(self.index - 1, ui);
+            } else if self.wrap && last > 0 {
+                self.move_with_sound(last, UiSound::Wrap, ui);
+            } else {
+                self.move_to(0, ui);
+            }
         } else if ui.key(Key::Down) || ui.key(Key::Tab) {
-            let to = if self.index < last { self.index + 1 } else if self.wrap { 0 } else { last };
-            self.move_to(to, ui);
+            if self.index < last {
+                self.move_to(self.index + 1, ui);
+            } else if self.wrap && last > 0 {
+                self.move_with_sound(0, UiSound::Wrap, ui);
+            } else {
+                self.move_to(last, ui);
+            }
         } else if ui.key(Key::Home) {
             self.move_to(0, ui);
         } else if ui.key(Key::End) {
@@ -398,14 +429,14 @@ impl Widget for Menu {
             } else if self.adjust(steps) {
                 self.changed(ui);
             } else if is_slider || matches!(self.current().map(|i| &i.kind), Some(ItemKind::Choice { .. })) {
-                ui.play(UiSound::Edge, self.sounds.as_ref());
+                self.play(ui, UiSound::Edge);
                 self.speak_value(ui);
             }
         } else if ui.key(Key::Enter) || ui.key(Key::NumpadEnter) || ui.input.pressed(Key::Space) {
             let item = &self.items[self.index];
             match &item.kind {
                 ItemKind::Button => {
-                    ui.play(UiSound::Activate, self.sounds.as_ref());
+                    self.play(ui, UiSound::Activate);
                     ui.emit(UiEvent::Activated { menu: self.id.clone(), item: item.id.clone() });
                     if self.close_on_activate {
                         return Status::Close;
@@ -417,7 +448,7 @@ impl Widget for Menu {
                     }
                 }
                 ItemKind::Text { value, password } => {
-                    ui.play(UiSound::Activate, self.sounds.as_ref());
+                    self.play(ui, UiSound::Activate);
                     let mut input = TextInput::new(format!("{}/{}", self.id, item.id), item.label.clone())
                         .initial(value.clone())
                         .child();
@@ -430,7 +461,7 @@ impl Widget for Menu {
                 ItemKind::Slider { .. } | ItemKind::Label => self.announce(ui, false),
             }
         } else if ui.key(Key::Escape) && self.closable {
-            ui.play(UiSound::Close, self.sounds.as_ref());
+            self.play(ui, UiSound::Close);
             ui.emit(UiEvent::Closed { id: self.id.clone() });
             return Status::Close;
         } else if let Some(c) = ui.input.text().chars().find(|c| c.is_alphanumeric()) {

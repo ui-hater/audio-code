@@ -46,7 +46,40 @@ ctx.speech.backend_name();     // e.g. Some("NVDA")
 `Engine::new("..").echo_speech(true)` turns on console echo from the start. This is useful
 while developing.
 
-## Without prism
+## Fallbacks
 
-If you build with `default-features = false`, or prism finds no output on the system,
-speech is printed to the console. The game keeps working.
+The engine uses the first output that works:
+
+1. **prism** (feature `prism`)
+2. **NVDA controller client** (Windows, feature `nvda`)
+3. **the console**
+
+`ctx.speech.backend_name()` tells you which one is active, e.g. `"NVDA (controller client)"`.
+
+### NVDA controller client
+
+When prism is not compiled in or finds nothing, the engine loads NVDA's
+`nvdaControllerClient.dll` at runtime and speaks through NVDA directly. This also works when
+you build without prism (`default-features = false, features = ["nvda"]`), which avoids the
+C++ build entirely.
+
+The DLL is not part of this crate. Get it from the NVDA download page ("controller
+client") and put it **next to your game's executable**. 64-bit games need the 64-bit DLL. Both
+the new name `nvdaControllerClient.dll` and the old names `nvdaControllerClient64.dll` /
+`nvdaControllerClient32.dll` are found. The DLL is licensed under the LGPL 2.1, so check that
+license before you ship it.
+
+The engine looks in this order:
+
+1. the path given with `Engine::new("..").nvda_dll("libs/nvdaControllerClient.dll")` (a file
+   or a folder)
+2. the folder of the executable
+3. the working directory
+4. the normal Windows DLL search path
+
+If NVDA is not running when a message is spoken, the message is printed to the console
+instead. NVDA keeps the user's own rate and volume, so `set_rate` and `set_volume` do nothing.
+
+### Console
+
+If no output works, speech is printed to the console, so the game always keeps working.

@@ -6,12 +6,16 @@ Audio games are played by ear, and you can play them without seeing the screen. 
 gives you what they need in one crate, and a full game fits in a few dozen lines:
 
 - **Speech** through the player's screen reader (NVDA, JAWS, VoiceOver, Orca, ...) or the
-  system voice, via [prism](https://github.com/ethindp/prism)
+  system voice, via [prism](https://github.com/ethindp/prism), with NVDA's controller
+  client as a fallback on Windows
 - **Sound**: play effects in one line, place 3D sounds in the world, loop them, change their
   pitch, and cross fade music. Files are found and cached for you.
 - **Virtual UI**: menus that speak, with buttons, sliders, checkboxes, choices, text fields,
   message boxes and yes/no dialogs. They need no graphics and work from the keyboard only.
-- **Physics**: walls, floors, gravity, trigger zones and ray casts, built for audio game needs
+  Every click sound can be replaced with your own file or a sound designed with the synth.
+- **Synth**: design clicks, beeps and effects in code
+- **Physics**: walls, floors, gravity, jumping, mass, forces, pushable objects, moving
+  platforms, landing events, trigger zones and ray casts
 - **Time**: frame delta, a scheduler (`after`, `every`), timers, cooldowns and intervals
 - **Input**: pressed / held / released keys, key repeat with your own timing, and typed text
 - **Scenes**: main menu, levels and pause screens as a simple stack
@@ -63,18 +67,22 @@ Speech uses the prism C++ library, which is built from source automatically. You
   [prism README](https://github.com/ethindp/prism) has the details.
 - **macOS:** Xcode command line tools
 
-To build without prism (speech is then printed to the console), turn off default features:
+To build without prism and its C++ build, turn off default features. On Windows you can
+keep speech through NVDA's controller client DLL (see [Speech](docs/speech.md#nvda-controller-client)):
 
 ```toml
-audio-code = { git = "...", default-features = false }
+audio-code = { git = "...", default-features = false, features = ["nvda"] }
 ```
 
 ### Feature flags
 
 | Feature    | Default | What it does                                              |
 |------------|---------|-----------------------------------------------------------|
-| `prism`    | yes     | Screen reader and TTS output. Without it, speech is printed. |
+| `prism`    | yes     | Screen reader and TTS output via prism.                   |
+| `nvda`     | yes     | Windows: speak through `nvdaControllerClient.dll` if prism is unavailable. |
 | `wxdragon` | no      | `Engine::run_wx` and `audio_code::wx` for wxWidgets windows. |
+
+Without any speech output, speech is printed to the console.
 
 ## Examples
 

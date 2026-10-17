@@ -16,3 +16,11 @@ First version.
 - Time: delta, time scale and pause, named scheduler, `Timer`, `Cooldown`, `Interval`
 - Input: pressed / held / released, custom key repeat, typed text, layout aware letters
 - winit window backend, optional wxDragon backend (`wxdragon` feature)
+- Speech fallback to NVDA's controller client DLL on Windows (`nvda` feature, default on),
+  `Engine::nvda_dll`
+- `Synth` for designing clicks and effects in code; `Audio::register` accepts synths
+- Custom UI sounds: `Ui::set_sound`, `Ui::set_sound_data`, `UiSounds::with/without`,
+  `Menu::sound`, new `Wrap` and `Typing` sound slots
+- Physics: `EARTH_GRAVITY`, `Engine::gravity`, `World::jump`, `World::apply_force`, mass and
+  momentum exchange, terminal velocity (`max_speed`), `Landed` event, pushable bodies and
+  moving platforms that carry bodies

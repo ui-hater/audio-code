@@ -69,12 +69,12 @@ pub use error::{Error, Result};
 
 /// Everything you normally need: `use audio_code::prelude::*;`
 pub mod prelude {
-    pub use crate::audio::{Audio, Group, Sound, SoundData};
+    pub use crate::audio::{Audio, Group, Sound, SoundData, Synth, Wave};
     pub use crate::engine::{Context, Engine, Scene};
     pub use crate::input::{Input, Key, Modifiers};
     pub use crate::math::{self, Vec2, Vec3, random, vec2, vec3};
-    pub use crate::physics::{Body, BodyId, BodyKind, PhysicsEvent, Shape, World};
+    pub use crate::physics::{Body, BodyId, BodyKind, EARTH_GRAVITY, PhysicsEvent, Shape, World};
     pub use crate::speech::Speech;
     pub use crate::time::{Cooldown, Interval, Time, Timer};
-    pub use crate::ui::{Confirm, Menu, Message, TextInput, Ui, UiEvent, UiSounds, Value, Widget};
+    pub use crate::ui::{Confirm, Menu, Message, TextInput, Ui, UiEvent, UiSound, UiSounds, Value, Widget};
 }

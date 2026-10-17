@@ -356,11 +356,13 @@ impl Widget for TextInput {
             } else {
                 self.cursor -= 1;
                 let removed = self.text.remove(self.cursor);
+                ui.play(UiSound::Typing, None);
                 self.speak_char(Some(removed), ui);
             }
         } else if ui.key(Key::Delete) {
             if self.cursor < self.text.len() {
                 self.text.remove(self.cursor);
+                ui.play(UiSound::Typing, None);
                 self.speak_char(self.text.get(self.cursor).copied(), ui);
             } else {
                 ui.play(UiSound::Edge, None);
@@ -382,6 +384,7 @@ impl Widget for TextInput {
             last = Some(c);
         }
         if last.is_some() {
+            ui.play(UiSound::Typing, None);
             self.speak_char(last, ui);
         }
         Status::Open

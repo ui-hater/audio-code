@@ -9,9 +9,11 @@ keywords = ["audiogame", "accessibility", "gamedev", "audio", "screen-reader"]
 categories = ["game-engines", "accessibility", "multimedia::audio"]
 
 [features]
-default = ["prism"]
+default = ["prism", "nvda"]
 ## Speech and braille output through screen readers / TTS via the prism library.
 prism = ["dep:prismer"]
+## Windows only: speak through NVDA's controller client DLL when prism is unavailable.
+nvda = ["dep:libloading"]
 ## Run games inside a wxWidgets window (via wxDragon) instead of the built-in winit window.
 wxdragon = ["dep:wxdragon"]
 
@@ -27,3 +29,6 @@ wxdragon = { version = "0.9.23", optional = true }
 [[example]]
 name = "wx_game"
 required-features = ["wxdragon"]
+
+[target."cfg(windows)".dependencies]
+libloading = { version = "0.9.0", optional = true }

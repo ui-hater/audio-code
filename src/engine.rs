@@ -184,6 +184,8 @@ pub struct Engine {
     pub(crate) echo_speech: bool,
     pub(crate) window_size: (u32, u32),
     pub(crate) headless: bool,
+    pub(crate) nvda_dll: Option<PathBuf>,
+    pub(crate) gravity: glam::Vec3,
 }
 
 impl Engine {
@@ -198,6 +200,8 @@ impl Engine {
             echo_speech: false,
             window_size: (640, 480),
             headless: false,
+            nvda_dll: None,
+            gravity: glam::Vec3::ZERO,
         }
     }
 
@@ -210,6 +214,13 @@ impl Engine {
     /// Physics and [`Scene::fixed_update`] steps per second (default 60).
     pub fn physics_rate(mut self, rate: u32) -> Self {
         self.physics_rate = rate.clamp(1, 1000);
+        self
+    }
+
+    /// Gravity of the physics world, e.g. [`EARTH_GRAVITY`](crate::physics::EARTH_GRAVITY).
+    /// Default is none (top down games). Can be changed later with `ctx.physics.set_gravity`.
+    pub fn gravity(mut self, gravity: glam::Vec3) -> Self {
+        self.gravity = gravity;
         self
     }
 
@@ -229,6 +240,15 @@ impl Engine {
     /// helpers can still find and focus it.
     pub fn window_size(mut self, width: u32, height: u32) -> Self {
         self.window_size = (width, height);
+        self
+    }
+
+    /// Where to find NVDA's controller client DLL, used for speech when prism is not
+    /// available (Windows, feature `nvda`). Accepts the DLL file or the folder containing it.
+    /// Without this, the folder of the executable, the working directory and the system
+    /// search path are tried.
+    pub fn nvda_dll(mut self, path: impl Into<PathBuf>) -> Self {
+        self.nvda_dll = Some(path.into());
         self
     }
 
@@ -367,9 +387,13 @@ impl Runner {
             } else {
                 Audio::new(config.sound_dir.clone())
             },
-            speech: if config.headless { Speech::console() } else { Speech::new(config.echo_speech) },
+            speech: if config.headless { Speech::console() } else { Speech::new(config.echo_speech, config.nvda_dll.clone()) },
             ui: Ui::default(),
-            physics: World::new(),
+            physics: {
+                let mut world = World::new();
+                world.set_gravity(config.gravity);
+                world
+            },
             title: config.title.clone(),
             quit: false,
             change: None,

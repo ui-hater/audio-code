@@ -133,16 +133,59 @@ if let Some(text) = ctx.ui.submitted("name") { /* ... */ }
 
 ## Interface sounds
 
-By default the UI uses small generated clicks, so no files are needed. To replace them:
+By default the UI uses small generated clicks, so no files are needed. Every sound can be
+replaced. These are the slots (`UiSound`):
+
+| Slot       | Played when                                              | Built-in   |
+|------------|----------------------------------------------------------|------------|
+| `Open`     | a widget opens                                           | rising chirp |
+| `Close`    | the player closes a widget                               | falling chirp |
+| `Navigate` | the focus moves to another item                          | short click |
+| `Wrap`     | a menu jumps from the last to the first item or back     | double click (falls back to `Navigate`) |
+| `Activate` | a button is pressed, text is submitted                   | two notes  |
+| `Edge`     | the first or last item is reached                        | low thump  |
+| `Change`   | a slider, checkbox or choice changes                     | click      |
+| `Typing`   | a character is typed or deleted in a text field          | silent     |
+
+### Your own click sounds from files
 
 ```rust
-ctx.ui.set_sounds(UiSounds::from_folder("ui"));   // sounds/ui/navigate.ogg, ...
-ctx.ui.set_sounds(UiSounds::none());              // silence
-ctx.ui.set_sounds(UiSounds { activate: Some("click".into()), ..UiSounds::builtin() });
+ctx.ui.set_sound(UiSound::Navigate, Some("ui/click"));   // sounds/ui/click.ogg
+ctx.ui.set_sound(UiSound::Edge, None);                   // silence for this slot
+ctx.ui.set_sounds(UiSounds::from_folder("ui"));          // sounds/ui/navigate.ogg, open.ogg, ...
+ctx.ui.set_sounds(UiSounds::none());                     // no UI sounds at all
+ctx.ui.set_sounds(UiSounds::builtin().with(UiSound::Activate, "ui/ok").without(UiSound::Wrap));
 ```
 
-The sound slots are `open`, `close`, `navigate`, `activate`, `edge` (first/last item reached)
-and `change` (value changed). UI sounds play in `Group::Ui`, which has its own volume.
+### Your own click sounds designed in code
+
+`set_sound_data` takes anything that becomes sound data, usually a
+[`Synth`](audio.md#designing-sounds-with-the-synth):
+
+```rust
+ctx.ui.set_sound_data(UiSound::Navigate, Synth::triangle(1800.0).length(0.025).decay(150.0).volume(0.4));
+ctx.ui.set_sound_data(UiSound::Wrap, Synth::triangle(1800.0).sweep_to(2600.0).length(0.06).decay(60.0));
+ctx.ui.set_sound_data(UiSound::Typing, Synth::noise().length(0.012).decay(300.0).volume(0.25));
+ctx.ui.set_sound_data(
+    UiSound::Activate,
+    Synth::sine(880.0).length(0.04).then(Synth::sine(1320.0).length(0.08).decay(40.0)),
+);
+```
+
+The `menus` example uses exactly these sounds.
+
+### Sounds for one menu only
+
+```rust
+Menu::new("main", "Main menu")
+    .sound(UiSound::Navigate, Some("ui/main_click"))   // only this menu
+    .sound(UiSound::Open, None)                        // silent open
+    // or replace all sounds of this menu:
+    // .sounds(UiSounds::from_folder("ui/fantasy"))
+```
+
+UI sounds play in `Group::Ui`, which has its own volume:
+`ctx.audio.set_group_volume(Group::Ui, 0.5)`.
 
 ## Managing the stack
 

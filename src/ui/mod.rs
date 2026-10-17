@@ -39,7 +39,7 @@ pub use dialog::{Confirm, Message, TextInput};
 pub use menu::{ItemKind, Menu, MenuItem};
 pub use sounds::{UiSound, UiSounds};
 
-use crate::audio::Audio;
+use crate::audio::{Audio, SoundData};
 use crate::input::{Input, Key, RawInput};
 use crate::speech::Speech;
 
@@ -208,9 +208,14 @@ impl UiContext<'_> {
         let set = custom.unwrap_or(self.sounds);
         if let Some(name) = set.get(sound) {
             let name = name.to_string();
-            sounds::ensure_builtin(self.audio, &name);
-            self.audio.sound(&name).group(crate::audio::Group::Ui).play();
+            self.play_named(&name);
         }
+    }
+
+    /// Plays a sound by name in the UI volume group.
+    pub fn play_named(&mut self, name: &str) {
+        sounds::ensure_builtin(self.audio, name);
+        self.audio.sound(name).group(crate::audio::Group::Ui).play();
     }
 
     /// Shortcut: key went down or repeats.
@@ -236,6 +241,8 @@ pub struct Ui {
     stack: Vec<Entry>,
     events: Vec<UiEvent>,
     sounds: UiSounds,
+    /// Sounds made with `set_sound_data`, registered with the audio system on the next update.
+    pending_sounds: Vec<(String, SoundData)>,
 }
 
 impl std::fmt::Debug for Ui {
@@ -251,6 +258,9 @@ impl Ui {
     /// Runs the top widget. Returns `true` if the UI used the keyboard this frame.
     pub(crate) fn update(&mut self, input: &Input, speech: &mut Speech, audio: &mut Audio) -> bool {
         self.events.clear();
+        for (name, data) in self.pending_sounds.drain(..) {
+            audio.register(name, data);
+        }
         let Some(top) = self.stack.last_mut() else {
             return false;
         };
@@ -345,6 +355,42 @@ impl Ui {
     /// Replaces the interface sounds used by all widgets. Use [`UiSounds::none`] for silence.
     pub fn set_sounds(&mut self, sounds: UiSounds) {
         self.sounds = sounds;
+    }
+
+    /// The interface sounds used by all widgets.
+    pub fn sounds(&self) -> &UiSounds {
+        &self.sounds
+    }
+
+    /// Uses the sound `name` (a file or registered sound) for one kind of interface sound.
+    /// `None` makes it silent.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context) {
+    /// ctx.ui.set_sound(UiSound::Navigate, Some("ui/click"));   // sounds/ui/click.ogg
+    /// ctx.ui.set_sound(UiSound::Edge, None);
+    /// # }
+    /// ```
+    pub fn set_sound(&mut self, kind: UiSound, name: Option<&str>) {
+        self.sounds.set(kind, name.map(String::from));
+    }
+
+    /// Uses a sound made in code for one kind of interface sound, typically a [`Synth`]:
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context) {
+    /// ctx.ui.set_sound_data(UiSound::Navigate, Synth::triangle(1800.0).length(0.02).decay(150.0));
+    /// ctx.ui.set_sound_data(UiSound::Typing, Synth::noise().length(0.01).volume(0.2));
+    /// # }
+    /// ```
+    ///
+    /// [`Synth`]: crate::audio::Synth
+    pub fn set_sound_data(&mut self, kind: UiSound, data: impl Into<SoundData>) {
+        let name = format!("ui:custom:{}", kind.name());
+        self.pending_sounds.push((name.clone(), data.into()));
+        self.sounds.set(kind, Some(name));
     }
 
     /// Current value of a menu item while the menu is open.
@@ -485,6 +531,21 @@ mod tests {
         h.frame(&[], ""); // menu resumes
         assert_eq!(h.ui.value("m", "name"), Some(Value::Text("Bo".into())));
         assert_eq!(h.speech.last(), Some("Name, edit, Bo, 1 of 1"));
+    }
+
+    #[test]
+    fn custom_sounds() {
+        let mut h = Harness::new();
+        h.ui.set_sound_data(UiSound::Navigate, crate::audio::Synth::sine(2000.0).length(0.02));
+        h.ui.set_sound(UiSound::Edge, None);
+        assert_eq!(h.ui.sounds().get(UiSound::Navigate), Some("ui:custom:navigate"));
+        assert_eq!(h.ui.sounds().get(UiSound::Wrap), Some("ui:builtin:wrap"));
+        assert_eq!(h.ui.sounds().edge, None);
+        h.ui.open(Menu::new("m", "").button("a", "A").sound(UiSound::Open, None));
+        h.frame(&[], "");
+        assert!(h.audio.is_loaded("ui:custom:navigate"));
+        let only_nav = UiSounds::none().with(UiSound::Navigate, "x");
+        assert_eq!(only_nav.get(UiSound::Wrap), Some("x"));
     }
 
     #[test]

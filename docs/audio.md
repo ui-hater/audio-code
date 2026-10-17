@@ -131,9 +131,43 @@ ctx.audio.unload("explosion");       // frees the cache entry
 A missing or broken file prints one warning and returns a silent handle, so a typo never
 crashes the game.
 
-## Generated sounds
+## Designing sounds with the synth
 
-`SoundData` lets you make sounds in code, which is good for prototypes and retro effects:
+`Synth` makes clicks, beeps and effects in code. You do not need any files:
+
+```rust
+// A short, soft click.
+ctx.audio.register("click", Synth::sine(1500.0).length(0.03).decay(120.0).volume(0.4));
+
+// Two notes one after the other.
+ctx.audio.register("coin", Synth::triangle(988.0).length(0.08).then(Synth::triangle(1319.0).length(0.17).decay(15.0)));
+
+// Two layers at the same time: noise plus a falling low tone.
+ctx.audio.register("thump", Synth::sine(150.0).sweep_to(50.0).length(0.15).decay(30.0)
+    .with(Synth::noise().length(0.05).decay(80.0).volume(0.3)));
+
+// A rhythm with pauses.
+ctx.audio.register("alarm", Synth::square(800.0).length(0.1).then(Synth::silence(0.1)).then(Synth::square(800.0).length(0.1)));
+```
+
+| Method | Meaning |
+|--------|---------|
+| `Synth::sine/square/triangle/saw(hz)`, `Synth::noise()`, `Synth::silence(s)` | wave shape |
+| `.length(seconds)` | duration (default 0.1) |
+| `.sweep_to(hz)` | glide the pitch |
+| `.attack(seconds)` | fade in (default 2 ms) |
+| `.decay(rate)` | exponential fade out: 20 slow, 100+ a short click |
+| `.release(seconds)` | linear fade at the end (default 5 ms) |
+| `.volume(v)` | loudness (default 0.5) |
+| `.then(other)` | play `other` afterwards |
+| `.with(other)` | play `other` at the same time |
+
+Settings apply to the part they are called on; parts added with `then` and `with` keep
+their own settings.
+
+## Generated sounds from formulas
+
+For full control, `SoundData` takes a function of time:
 
 ```rust
 use std::f32::consts::TAU;

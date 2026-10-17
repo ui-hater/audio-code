@@ -1,4 +1,5 @@
 //! Main menu, options sub menu, name input and a quit confirmation.
+//! Shows how to design your own click sounds with the synth.
 //!
 //! Run with `cargo run --example menus`.
 
@@ -33,6 +34,15 @@ fn options_menu(s: &Settings) -> Menu {
 
 impl Scene for MainMenu {
     fn start(&mut self, ctx: &mut Context) {
+        // Own interface sounds, designed in code. Files work too:
+        // ctx.ui.set_sound(UiSound::Navigate, Some("ui/click"));
+        ctx.ui.set_sound_data(UiSound::Navigate, Synth::triangle(1800.0).length(0.025).decay(150.0).volume(0.4));
+        ctx.ui.set_sound_data(UiSound::Wrap, Synth::triangle(1800.0).sweep_to(2600.0).length(0.06).decay(60.0).volume(0.4));
+        ctx.ui.set_sound_data(UiSound::Typing, Synth::noise().length(0.012).decay(300.0).volume(0.25));
+        ctx.ui.set_sound_data(
+            UiSound::Activate,
+            Synth::sine(880.0).length(0.04).volume(0.35).then(Synth::sine(1320.0).length(0.08).decay(40.0).volume(0.35)),
+        );
         ctx.insert(Settings { volume: 0.8, difficulty: 1, name: "Player".into() });
         ctx.ui.open(main_menu());
     }
