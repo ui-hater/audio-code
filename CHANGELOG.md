@@ -38,6 +38,8 @@ First version.
 - Detailed README with an explained example game, and `docs/architecture.md` explaining
   the internals; README code blocks are compiled as doc tests
 - Synthetic key presses on window focus are ignored
+- API reference in `docs/api-reference/`: every public function with its signature, defaults
+  and an example, one page per module
 - Menu music: `Menu::music` loops a track while the menu is open, submenus keep it, and the
   previous music comes back when it closes; `Widget::music` for custom widgets,
   `Audio::music_name`

@@ -1,6 +1,7 @@
 # Cheat sheet
 
-The calls you need most, on one page. Everything is reached through `ctx`.
+The calls you need most, on one page. Everything is reached through `ctx`. Every function
+with its signature and an example is in the [API reference](api-reference/README.md).
 
 Units everywhere: times in **seconds**, distances and positions in **meters**, speeds in
 **meters per second**, angles in **compass degrees** (0 = north, 90 = east, positive turns

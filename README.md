@@ -496,7 +496,7 @@ gives silent audio and console speech, and drive frames by hand with `Runner::fr
 - [Scenes, shared data and saving](docs/scenes.md)
 - [wxDragon integration](docs/wxdragon.md)
 - [Architecture](docs/architecture.md): how the engine works inside
-- API reference: `cargo doc --open`
+- [API reference](docs/api-reference/README.md): every public function with its signature and an example, for looking things up (also `cargo doc --open`)
 
 ## License
 
