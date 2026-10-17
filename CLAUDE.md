@@ -10,16 +10,16 @@ The design goal is simplicity for game developers. Common actions should be one-
 
 ## Build, test, lint
 
-On this Windows machine the default `prism` feature **does not build**, because the Visual Studio "C++ ATL" component is missing (`atlbase.h` not found). Develop with `--no-default-features`:
+On this Windows machine the optional `prism` feature **does not build**, because the Visual Studio "C++ ATL" component is missing (`atlbase.h` not found). Do not enable it; the default features (`nvda`) build fine:
 
 ```sh
-cargo build  --no-default-features --features nvda
-cargo test   --no-default-features --features nvda
-cargo test   --no-default-features physics::tests::jump_reaches_height   # single test (path filter)
-cargo clippy --no-default-features --features nvda,wxdragon --all-targets  # must stay warning-free
-RUSTDOCFLAGS="-D warnings" cargo doc --no-default-features --features nvda,wxdragon --no-deps
-cargo run    --no-default-features --features nvda --example menus      # hello, menus, beacon, platformer
-cargo run    --no-default-features --features nvda,wxdragon --example wx_game
+cargo build
+cargo test
+cargo test   physics::tests::jump_reaches_height   # single test (path filter)
+cargo clippy --features wxdragon --all-targets  # must stay warning-free
+RUSTDOCFLAGS="-D warnings" cargo doc --features wxdragon --no-deps
+cargo run    --example menus      # hello, menus, beacon, platformer
+cargo run    --features wxdragon --example wx_game
 ```
 
 - Run clippy for each feature combination you touch: none, `nvda`, `wxdragon,nvda`. `cfg`-gated code easily produces dead-code or unused-mut warnings in one combination only.
@@ -30,7 +30,7 @@ cargo run    --no-default-features --features nvda,wxdragon --example wx_game
 
 ## Features
 
-- `prism` (default): speech via the `prismer` crate. It builds prism C++ with CMake and links it statically.
+- `prism` (optional): speech via the `prismer` crate. It builds prism C++ with CMake and links it statically.
 - `nvda` (default, Windows only): loads `nvdaControllerClient.dll` at runtime with `libloading`.
 - `wxdragon`: wxWidgets backend (`src/wx.rs`). The first build compiles wxWidgets and is slow.
 

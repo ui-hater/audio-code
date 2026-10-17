@@ -59,9 +59,8 @@ The engine uses the first output that works:
 ### NVDA controller client
 
 When prism is not compiled in or finds nothing, the engine loads NVDA's
-`nvdaControllerClient.dll` at runtime and speaks through NVDA directly. This also works when
-you build without prism (`default-features = false, features = ["nvda"]`), which avoids the
-C++ build entirely.
+`nvdaControllerClient.dll` at runtime and speaks through NVDA directly. `nvda` is a default
+feature and `prism` is optional, so the default build needs no C++ toolchain.
 
 The DLL is not part of this crate. Get it from the NVDA download page ("controller
 client") and put it **next to your game's executable**. 64-bit games need the 64-bit DLL. Both

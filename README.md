@@ -311,8 +311,22 @@ crashes the game. Sounds made in code are registered under a name with
 audio-code = { git = "https://github.com/<you>/audio-code" }
 ```
 
-The default features need **prism**, a C++ library that is compiled automatically during
-the first build. For that you need **CMake 3.24+** and a **C++23 compiler**:
+The default build is pure Rust. On Windows it speaks through NVDA's controller client DLL
+(the `nvda` feature): put `nvdaControllerClient.dll` (from the NVDA controller client
+download) next to your game's `.exe`. Details are in
+[docs/speech.md](docs/speech.md#nvda-controller-client).
+
+### With prism
+
+For speech through every common screen reader and the system voice, turn on the optional
+`prism` feature:
+
+```toml
+audio-code = { git = "...", features = ["prism"] }
+```
+
+prism is a C++ library that is compiled automatically during the first build. For that you
+need **CMake 3.24+** and a **C++23 compiler**:
 
 | System | Additionally needed |
 |--------|---------------------|
@@ -320,23 +334,11 @@ the first build. For that you need **CMake 3.24+** and a **C++23 compiler**:
 | Linux | `pkg-config`, `libasound2-dev` (audio), and for speech glibmm 2.68+ (`libglibmm-2.68-dev`) and speech-dispatcher 0.11.1+ (`libspeechd-dev`). See the [prism README](https://github.com/ethindp/prism). |
 | macOS | Xcode command line tools |
 
-### Without prism
-
-To skip the C++ build, turn off the default features. On Windows, speech then still works
-through NVDA's controller client DLL:
-
-```toml
-audio-code = { git = "...", default-features = false, features = ["nvda"] }
-```
-
-Put `nvdaControllerClient.dll` (from the NVDA controller client download) next to your
-game's `.exe`. Details are in [docs/speech.md](docs/speech.md#nvda-controller-client).
-
 ### Feature flags
 
 | Feature    | Default | What it does |
 |------------|---------|--------------|
-| `prism`    | yes     | Speech and braille through screen readers and system voices. |
+| `prism`    | no      | Speech and braille through screen readers and system voices. |
 | `nvda`     | yes     | Windows: speech through `nvdaControllerClient.dll` when prism is unavailable. |
 | `wxdragon` | no      | `Engine::run_wx` and `audio_code::wx` for native wxWidgets windows. |
 
@@ -359,8 +361,8 @@ the 3D sound.
 
 ```sh
 cargo run --example beacon
-# without prism (e.g. on Windows without the ATL component):
-cargo run --no-default-features --features nvda --example beacon
+# with prism speech:
+cargo run --features prism --example beacon
 # the wxWidgets example:
 cargo run --features wxdragon --example wx_game
 ```

@@ -9,8 +9,8 @@ keywords = ["audiogame", "accessibility", "gamedev", "audio", "screen-reader"]
 categories = ["game-engines", "accessibility", "multimedia::audio"]
 
 [features]
-default = ["prism", "nvda"]
-## Speech and braille output through screen readers / TTS via the prism library.
+default = ["nvda"]
+## Speech and braille output through screen readers / TTS via the prism library (needs CMake and a C++23 compiler).
 prism = ["dep:prismer"]
 ## Windows only: speak through NVDA's controller client DLL when prism is unavailable.
 nvda = ["dep:libloading"]
