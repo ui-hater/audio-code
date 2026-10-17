@@ -97,6 +97,11 @@ impl Scene for Corridor {
 }
 ```
 
+`vec3(self.x, 0.0, 0.0)` is a position in meters: the first number goes east (right), the
+second north, the third up. Here only the first one changes, so the player walks along a
+line from west to east. The `0.0` after it is the direction the player faces (north), so
+east is on the right ear. [Positions, directions and 3D](3d.md) explains this in detail.
+
 `ctx.audio.play("step")` looks for `sounds/step.ogg` (or `.wav`, `.mp3`, ...). If you have
 no sound files yet, generate one:
 

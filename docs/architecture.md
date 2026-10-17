@@ -127,12 +127,17 @@ The cpal callback calls `Mixer::render(stereo_buffer)` for every block:
    - **Targets.** Compute left/right gain and a low-pass coefficient.
      - Non-positioned: stereo balance from `pan`.
      - Positioned: transform the offset to the listener into listener space using the
-       compass yaw. Then
+       compass yaw and the pitch: `local_x` along `math::right(yaw)`, `local_y` along
+       `math::forward_3d(yaw, pitch)`, `local_z` along `math::up_3d(yaw, pitch)`. Then
        - `gain = (min / max(distance, min))^rolloff · (1 − t²)`, where `t` goes from 0 at
          `min_distance` to 1 at `max_distance` (silent from there)
        - `pan = local_x / distance · 0.9`, with equal-power panning
        - `behind = max(0, −local_y / distance)`: up to 30 % quieter and a low-pass from
          20 kHz down to 2.5 kHz. Front and back sound different on headphones without HRTF.
+       - `below = max(0, −local_z / distance)`: up to 15 % quieter (less when also behind),
+         and the filter uses `max(behind, 0.6 · below)`, so below is duller than above but
+         clearer than behind. Sounds straight above or below are centered, because only
+         `local_x` pans.
    - **Smoothing.** Gains and the filter ramp linearly from last block's values to the new
      targets, so moving sounds do not click.
    - **Rendering.** Read the source with linear interpolation at
@@ -223,8 +228,9 @@ widget music is still the current track; music the game started meanwhile is kep
 ## Physics (`physics.rs`)
 
 Bodies live in a `BTreeMap<BodyId, Body>`. The ordered map keeps the simulation
-deterministic. Shapes are axis-aligned boxes and spheres. They never rotate; `facing` is only
-a number for your game and the listener.
+deterministic. Shapes are axis-aligned boxes and spheres. They never rotate; `facing` and
+`pitch` are only numbers for your game, `move_forward` (`math::forward_3d`) and the
+listener.
 
 **`penetration(a, b)`** returns the shortest direction to push `a` out of `b`, and the depth:
 

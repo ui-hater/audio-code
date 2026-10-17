@@ -46,3 +46,10 @@ First version.
   sound volume, pitch, distance and rolloff (with tables), synth frequency and decay, menu
   sliders and choices; the physics guide explains body kinds, which setup to use for top
   down games and platformers, the ways to move a body and what happens in one step
+- Full 3D: bodies have a `pitch` (look up or down) with `World::tilt`, `set_pitch`,
+  `look_at` and `move_up`; `move_forward` follows the pitch; `Audio::set_listener_3d` and
+  `listener_pitch`, and `ctx.follow` passes the pitch on; sounds below the listener are a
+  little dull and quieter, sounds above stay clear; `describe` adds heights ("4 meters
+  above", "directly below"); `math::forward_3d`, `up_3d`, `elevation`, `look_at`;
+  `Input::movement_3d`; `MoveResult` and `RayHit` in the prelude; new `flight` example
+- `docs/3d.md` explains what `vec3(x, y, z)` means, directions, angles and 3D games

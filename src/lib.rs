@@ -110,7 +110,7 @@ pub mod prelude {
     pub use crate::input::{Input, Key, Modifiers};
     pub use crate::level::Level;
     pub use crate::math::{self, Vec2, Vec3, random, vec2, vec3};
-    pub use crate::physics::{Body, BodyId, BodyKind, EARTH_GRAVITY, PhysicsEvent, Shape, World};
+    pub use crate::physics::{Body, BodyId, BodyKind, EARTH_GRAVITY, MoveResult, PhysicsEvent, RayHit, Shape, World};
     pub use crate::speech::Speech;
     pub use crate::storage::Storage;
     pub use crate::time::{Cooldown, Interval, Time, Timer};

@@ -99,6 +99,7 @@ Shortcuts: `ctx.pressed(key)` and `ctx.held(key)` are the same as the `ctx.input
 ```rust
 let run = ctx.input.axis(Key::Left, Key::Right);   // -1.0, 0.0 or 1.0
 let dir = ctx.input.movement();                    // arrows or WASD: x = right, y = forward
+let dir = ctx.input.movement_3d();                 // plus z: Page Up or E = up, Page Down or Q = down
 ```
 
 ### Your own key repeat

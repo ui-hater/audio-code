@@ -227,6 +227,15 @@ impl Input {
         glam::Vec2::new(x as f32, y as f32).normalize_or_zero()
     }
 
+    /// Like [`Input::movement`], plus `z` for up (Page Up or E) and down (Page Down or Q),
+    /// for flying, swimming or climbing. `x` is right, `y` is forward, `z` is up. Diagonals
+    /// are normalized.
+    pub fn movement_3d(&self) -> glam::Vec3 {
+        let flat = self.movement();
+        let z = (self.held(Key::PageUp) || self.held(Key::E)) as i32 - (self.held(Key::PageDown) || self.held(Key::Q)) as i32;
+        glam::Vec3::new(flat.x, flat.y, z as f32).normalize_or_zero()
+    }
+
     /// `true` if any key went down this frame.
     pub fn any_pressed(&self) -> bool {
         !self.blocked && !self.pressed.is_empty()
@@ -341,6 +350,17 @@ mod tests {
         assert!(!input.repeating(Key::Up, 0.3, 0.1));
         input.begin_frame(t + Duration::from_millis(420));
         assert!(input.repeating(Key::Up, 0.3, 0.1));
+    }
+
+    #[test]
+    fn movement_3d_adds_up_and_down() {
+        let mut input = Input::default();
+        input.push(KeyEvent::Down { key: Key::PageUp, repeat: false });
+        input.begin_frame(Instant::now());
+        assert_eq!(input.movement_3d(), glam::Vec3::Z);
+        input.push(KeyEvent::Down { key: Key::W, repeat: false });
+        input.begin_frame(Instant::now());
+        assert!((input.movement_3d() - glam::Vec3::new(0.0, 1.0, 1.0).normalize()).length() < 1e-5);
     }
 
     #[test]

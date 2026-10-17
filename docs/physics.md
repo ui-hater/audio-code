@@ -29,8 +29,13 @@ Axes:
 - `+y` = north / forward
 - `+z` = up
 
+Positions are written `vec3(x, y, z)`: `vec3(3.0, 10.0, 2.0)` is 3 m east, 10 m north and
+2 m up from the origin. Negative numbers go the other way (west, south, down).
+[Positions, directions and 3D](3d.md) explains `vec3` in detail, with examples.
+
 A top down game uses x and y and no gravity. A side scroller uses x (left/right) and z
-(up/down) with gravity pulling towards `-z`. A position is always the **center** of the
+(up/down) with gravity pulling towards `-z`. A full 3D game (flying, swimming) uses all
+three, see [Moving in 3D](#moving-in-3d). A position is always the **center** of the
 body: a 1.8 m tall box standing on a floor at `z = 0` has its center at `z = 0.9`.
 
 Some handy speeds for orientation: walking 1.5 m/s, running 5 m/s, a car in town 14 m/s,
@@ -135,6 +140,7 @@ through `ctx.physics.get_mut(id)` (the fields have the same names).
 | `with_user_data(n)` | `0` | Free number for your own data. | an index into your enemy list |
 | `with_velocity(v)` | zero | Start velocity in m/s. | |
 | `with_facing(deg)` | `0.0` (north) | Compass direction the body faces. The shape does **not** rotate. Used by `move_forward`, `strafe`, `describe` and `ctx.follow`. | `0.0`–`360.0` |
+| `with_pitch(deg)` | `0.0` (level) | How far the body looks up (positive) or down (negative). Used by `move_forward` and `ctx.follow`. | `-90.0`–`90.0` |
 | `with_mass(kg)` | `1.0` | Weight in kilograms. Only matters between two dynamic bodies and for forces. | crate 5–20, person 70–80 |
 | `with_bounciness(b)` | `0.0` | How much speed is kept when bouncing off something, from `0.0` (stops dead) to `1.0` (bounces back at full speed). When two bodies touch, the larger value of both counts. | ball 0.6–0.9, crate 0.1–0.3 |
 | `with_friction(f)` | `8.0` | How fast the body slows down sideways while it stands on the ground. See the table below. `0.0` is ice. | 0–20 |
@@ -213,7 +219,26 @@ ctx.follow(player);                                      // listener uses positi
 ```
 
 `describe` gives the direction as a clock position relative to the facing: 12 o'clock is
-straight ahead, 3 o'clock to the right, 6 o'clock behind.
+straight ahead, 3 o'clock to the right, 6 o'clock behind. If the target is a meter or more
+higher or lower, the height is added: `"12 o'clock, 11 meters, 4 meters above"`.
+
+### Moving in 3D
+
+Besides the facing, every body has a `pitch`: how far it looks up or down in degrees
+(0 = level, 90 = straight up, -90 = straight down). `move_forward` follows the pitch, so a
+drone, a bird or a diver can move in any direction:
+
+```rust
+ctx.physics.tilt(drone, 30.0);              // look 30° up (negative = down), returns the new pitch
+ctx.physics.move_forward(drone, 1.0);       // 1 m forward and up at the same time
+ctx.physics.move_up(drone, 1.0);            // 1 m straight up, -1.0 down (ladders, lifts, flying)
+ctx.physics.look_at(drone, bird_pos);       // face a point: sets facing and pitch
+ctx.physics.pitch(drone);
+```
+
+With the default pitch of 0, `move_forward` stays level, so walking games work as before.
+`strafe` is always level. See [Positions, directions and 3D](3d.md) for a complete
+overview and `examples/flight.rs` for a game.
 
 ## Moving bodies
 

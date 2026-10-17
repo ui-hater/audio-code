@@ -69,7 +69,7 @@ pub struct Audio {
     next_id: u64,
     music: Option<Sound>,
     music_name: Option<String>,
-    listener: (Vec3, f32),
+    listener: (Vec3, f32, f32),
     master: f32,
     groups: HashMap<Group, f32>,
     default_distance: (f32, f32),
@@ -116,7 +116,7 @@ impl Audio {
             next_id: 1,
             music: None,
             music_name: None,
-            listener: (Vec3::ZERO, 0.0),
+            listener: (Vec3::ZERO, 0.0, 0.0),
             master: 1.0,
             groups: HashMap::new(),
             default_distance: (1.0, 30.0),
@@ -420,9 +420,19 @@ impl Audio {
 
     /// Places the listener (the player's ears) in the world. `yaw` is the compass direction
     /// the player faces (0 = north, 90 = east). Call this whenever the player moves or turns.
+    /// The listener looks level with the horizon; use [`Audio::set_listener_3d`] to also
+    /// look up or down.
     pub fn set_listener(&mut self, position: Vec3, yaw: f32) {
-        self.listener = (position, yaw);
-        let _ = self.tx.send(Command::Listener { position, yaw });
+        self.set_listener_3d(position, yaw, 0.0);
+    }
+
+    /// Like [`Audio::set_listener`], plus `pitch`: how far the player looks up (positive,
+    /// 90 = straight up) or down (negative, -90 = straight down), in degrees. For flying,
+    /// swimming or space games.
+    pub fn set_listener_3d(&mut self, position: Vec3, yaw: f32, pitch: f32) {
+        let pitch = pitch.clamp(-90.0, 90.0);
+        self.listener = (position, yaw, pitch);
+        let _ = self.tx.send(Command::Listener { position, yaw, pitch });
     }
 
     /// Current listener position.
@@ -433,6 +443,11 @@ impl Audio {
     /// Current listener facing in compass degrees.
     pub fn listener_yaw(&self) -> f32 {
         self.listener.1
+    }
+
+    /// Current listener pitch in degrees (0 = level, 90 = straight up).
+    pub fn listener_pitch(&self) -> f32 {
+        self.listener.2
     }
 
     /// Default audible range for positioned sounds in meters: full volume up to `min`,

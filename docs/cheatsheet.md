@@ -5,7 +5,10 @@ The calls you need most, on one page. Everything is reached through `ctx`.
 Units everywhere: times in **seconds**, distances and positions in **meters**, speeds in
 **meters per second**, angles in **compass degrees** (0 = north, 90 = east, positive turns
 right), volumes as a **linear factor** (1.0 = unchanged, 0.5 = half, 0.0 = silent). Axes:
-`+x` east, `+y` north, `+z` up.
+`+x` east, `+y` north, `+z` up. Pitch: 0 = level, 90 = straight up, -90 = straight down.
+
+Positions: `vec3(x, y, z)` in meters. `vec3(3.0, -2.0, 1.5)` = 3 m east, 2 m south, 1.5 m
+up. Details in [Positions, directions and 3D](3d.md).
 
 ## Starting
 
@@ -45,6 +48,9 @@ Engine::new("My game").gravity(EARTH_GRAVITY).run_with(Level::new)?;   // Level:
 | Player body (platformer) | `let p = ctx.physics.add(Body::dynamic(pos).with_box(0.8, 0.8, 1.6));` (width, depth, height in m) |
 | Ears follow the player | `ctx.follow(p)` |
 | Turn | `ctx.physics.turn(p, 45.0)` (degrees, positive = right) |
+| Look up / down | `ctx.physics.tilt(p, 30.0)` (degrees, positive = up) |
+| Fly forward / up | `ctx.physics.move_forward(p, 1.0)` follows the pitch, `ctx.physics.move_up(p, 1.0)` |
+| Look at a point | `ctx.physics.look_at(p, pos)` |
 | Walk forward, hit walls | `if ctx.physics.move_forward(p, 1.0).blocked { ctx.play("wall") }` (meters) |
 | Where is it? | `ctx.speak(ctx.physics.describe(p, target))` → "3 o'clock, 12 meters" |
 | Something that makes noise | `ctx.loop_on(enemy, "growl")` (follows it, stops when removed) |

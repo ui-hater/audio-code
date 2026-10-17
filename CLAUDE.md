@@ -18,7 +18,7 @@ cargo test
 cargo test   physics::tests::jump_reaches_height   # single test (path filter)
 cargo clippy --features wxdragon --all-targets  # must stay warning-free
 RUSTDOCFLAGS="-D warnings" cargo doc --features wxdragon --no-deps
-cargo run    --example menus      # hello, menus, beacon, platformer
+cargo run    --example menus      # hello, menus, beacon, platformer, flight
 cargo run    --features wxdragon --example wx_game
 ```
 
@@ -73,6 +73,7 @@ cargo run    --features wxdragon --example wx_game
 **Conventions shared across modules** (`src/math.rs`):
 - z is up, +y is north, +x is east.
 - Angles are compass degrees (0 = north, clockwise). The listener yaw, `math::forward` and the panning in the mixer all rely on this.
+- Pitch is degrees up from the horizon (-90..=90). `Body::pitch`, the listener pitch and `math::forward_3d` / `up_3d` use it; with pitch 0 everything behaves as in 2D.
 - Game-facing APIs take `f32` seconds, linear volume and string ids for UI items.
 
 ## Docs

@@ -12,10 +12,10 @@ make the common things one line long:
 | Area | What you get |
 |------|--------------|
 | **Speech** | Output through the player's screen reader (NVDA, JAWS, VoiceOver, Orca, ...) or the system voice via [prism](https://github.com/ethindp/prism). NVDA's controller client is a fallback on Windows, and the console is the last resort. |
-| **Sound** | One-line playback, 3D positioned sounds, loops, pitch, fades, music with cross fades, volume groups. Files are found and cached for you. |
+| **Sound** | One-line playback, 3D positioned sounds (left/right, front/back, above/below, a listener that can look up and down), loops, pitch, fades, music with cross fades, volume groups. Files are found and cached for you. |
 | **Synth** | Design clicks, beeps and effects in code. You do not need any sound files to start. |
 | **Virtual UI** | Spoken menus with buttons, sliders, checkboxes, choices and text fields, plus message boxes, yes/no questions and text input. Keyboard only, with replaceable interface sounds. |
-| **Physics** | Walls, floors, gravity, jumping, mass, forces, pushable objects, moving platforms, trigger zones, ray casts, landing and collision events. |
+| **Physics** | Full 3D: walls, floors, ceilings, gravity, jumping, flying with facing and pitch, mass, forces, pushable objects, moving platforms, trigger zones, ray casts, landing and collision events. |
 | **Levels** | Draw a level as a text map: `#` is a wall, letters are spawn points. |
 | **Time** | Frame delta, slow motion and pause, a named scheduler (`after`, `every`), timers, cooldowns, intervals. |
 | **Input** | Pressed / held / released keys, key repeat with your own timing, typed text, direction helpers. |
@@ -292,9 +292,14 @@ Each frame runs in this order. Knowing it explains most behavior:
 
 - `+x` is east (right), `+y` is north (forward), `+z` is up.
 - Angles are **compass degrees**: 0 = north, 90 = east, 180 = south, 270 = west.
-- A top down game uses x and y. A side scroller uses x and z with gravity.
+- A position is `vec3(x, y, z)` in meters: `vec3(3.0, -2.0, 1.5)` is 3 m east, 2 m south
+  and 1.5 m up.
+- Pitch (looking up or down) is in degrees too: 0 = level, 90 = straight up.
+- A top down game uses x and y. A side scroller uses x and z with gravity. A flying or
+  swimming game uses all three.
 - `math::direction_name(90.0)` returns `"east"`. `ctx.physics.describe(player, target)`
-  returns `"3 o'clock, 12 meters"`.
+  returns `"3 o'clock, 12 meters"`, or `"3 o'clock, 12 meters, 4 meters above"`.
+- [docs/3d.md](docs/3d.md) explains positions, directions and 3D in detail.
 
 ### Sound names
 
@@ -357,6 +362,7 @@ the 3D sound.
 | `menus` | main menu, options with slider/choice/text field, name input, quit confirmation, custom click sounds |
 | `beacon` | text map maze, turning and walking, 3D beacons, pause scene, saved best time |
 | `platformer` | gravity, jumping, landing sounds, a lift, a pushable crate, collecting coins |
+| `flight` | full 3D: fly a drone, look up and down, find birds at different heights |
 | `wx_game` | a game inside a wxWidgets window next to a native button |
 
 ```sh
@@ -485,6 +491,7 @@ gives silent audio and console speech, and drive frames by hand with `Runner::fr
 - [Speech](docs/speech.md): screen readers, NVDA fallback, history, braille
 - [Virtual UI](docs/ui.md): menus, dialogs, text input, custom click sounds, custom widgets
 - [Physics](docs/physics.md): bodies, gravity, jumping, events, levels from text maps
+- [Positions, directions and 3D](docs/3d.md): what `vec3(x, y, z)` means, angles, flying, sound above and below
 - [Time and input](docs/time-and-input.md): delta time, scheduler, timers, keys
 - [Scenes, shared data and saving](docs/scenes.md)
 - [wxDragon integration](docs/wxdragon.md)

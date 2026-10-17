@@ -71,7 +71,7 @@ pub(crate) enum Command {
     Play(Box<Voice>),
     Change(u64, Change),
     StopAll { group: Option<Group>, fade: f32 },
-    Listener { position: Vec3, yaw: f32 },
+    Listener { position: Vec3, yaw: f32, pitch: f32 },
     GroupVolume(Group, f32),
     MasterVolume(f32),
 }
@@ -191,9 +191,11 @@ impl Voice {
             return (gains, 1.0);
         };
 
+        // The offset in the listener's own frame: right, ahead and above the head.
         let rel = s.position - listener.position;
         let local_x = rel.dot(math::right(listener.yaw));
-        let local_y = rel.dot(math::forward(listener.yaw));
+        let local_y = rel.dot(math::forward_3d(listener.yaw, listener.pitch));
+        let local_z = rel.dot(math::up_3d(listener.yaw, listener.pitch));
         let distance = rel.length();
 
         if distance >= s.max_distance {
@@ -203,15 +205,18 @@ impl Voice {
         let t = ((distance - s.min_distance) / (s.max_distance - s.min_distance)).clamp(0.0, 1.0);
         let mut gain = near.powf(s.rolloff) * (1.0 - t * t);
 
-        let (pan, behind) = if distance > 1e-4 {
-            ((local_x / distance) * 0.9, (-local_y / distance).max(0.0))
+        let (pan, behind, below) = if distance > 1e-4 {
+            ((local_x / distance) * 0.9, (-local_y / distance).max(0.0), (-local_z / distance).max(0.0))
         } else {
-            (0.0, 0.0)
+            (0.0, 0.0, 0.0)
         };
         // Sounds behind the listener are a bit quieter and duller, which helps telling
-        // front from back on headphones.
-        gain *= 1.0 - 0.3 * behind;
-        let cutoff = math::lerp(20_000.0, 2_500.0, behind);
+        // front from back on headphones. Sounds below are dulled less, so above (clear),
+        // below (slightly dull) and behind (dull) can be told apart. Sounds straight above or
+        // below are centered, because the pan only uses the sideways part of the offset.
+        gain *= 1.0 - 0.3 * behind - 0.15 * below * (1.0 - behind);
+        let muffle = behind.max(0.6 * below);
+        let cutoff = math::lerp(20_000.0, 2_500.0, muffle);
         let lowpass = 1.0 - (-std::f32::consts::TAU * cutoff / rate).exp();
 
         let angle = (pan + 1.0) * FRAC_PI_4;
@@ -340,6 +345,7 @@ fn fade_step(distance: f32, seconds: f32, rate: f32) -> f32 {
 pub(crate) struct Listener {
     pub position: Vec3,
     pub yaw: f32,
+    pub pitch: f32,
 }
 
 pub(crate) struct Mixer {
@@ -356,7 +362,7 @@ impl Mixer {
         Self {
             rx,
             voices: Vec::with_capacity(64),
-            listener: Listener { position: Vec3::ZERO, yaw: 0.0 },
+            listener: Listener { position: Vec3::ZERO, yaw: 0.0, pitch: 0.0 },
             groups: [1.0; 3],
             master: 1.0,
             rate: rate as f32,
@@ -388,7 +394,7 @@ impl Mixer {
                         v.apply(Change::Stop { fade }, rate);
                     }
                 }
-                Command::Listener { position, yaw } => self.listener = Listener { position, yaw },
+                Command::Listener { position, yaw, pitch } => self.listener = Listener { position, yaw, pitch },
                 Command::GroupVolume(group, volume) => self.groups[group.index()] = volume.max(0.0),
                 Command::MasterVolume(volume) => self.master = volume.max(0.0),
             }
@@ -444,5 +450,26 @@ mod tests {
         let mut out = vec![0.0; 64];
         mixer.render(&mut out);
         assert!(out[0] > out[1] * 3.0);
+    }
+
+    #[test]
+    fn height_and_pitch_change_the_sound() {
+        let (_, rx) = channel();
+        let mixer = Mixer::new(rx, 44_100);
+        let at = |position: Vec3, pitch: f32| {
+            let (mut v, _) = voice(1, SoundData::from_samples(vec![0.5; 10], 1, 44_100));
+            v.spatial = Some(Spatial { position, min_distance: 1.0, max_distance: 30.0, rolloff: 1.0 });
+            let listener = Listener { position: Vec3::ZERO, yaw: 0.0, pitch };
+            let ([l, r], lowpass) = v.targets(&listener, mixer.rate, 1);
+            (l + r, lowpass)
+        };
+        let (above, above_lp) = at(Vec3::new(0.0, 0.0, 3.0), 0.0);
+        let (below, below_lp) = at(Vec3::new(0.0, 0.0, -3.0), 0.0);
+        let (behind, behind_lp) = at(Vec3::new(0.0, -3.0, 0.0), 0.0);
+        assert!(above > below && below > behind);
+        assert!(above_lp > below_lp && below_lp > behind_lp);
+        // Looking straight down, a sound above is behind the head.
+        let (_, looking_down_lp) = at(Vec3::new(0.0, 0.0, 3.0), -90.0);
+        assert!((looking_down_lp - behind_lp).abs() < 1e-4);
     }
 }

@@ -110,6 +110,11 @@ pub struct Body {
     /// rotate; this is used by [`World::move_forward`], [`World::turn`] and the listener
     /// when a body is followed with [`Context::follow`](crate::Context::follow).
     pub facing: f32,
+    /// How far the body looks up or down in degrees: 0 = level (the default), 90 = straight
+    /// up, -90 = straight down. Like `facing`, it does not rotate the shape. Used by
+    /// [`World::move_forward`] (so a body can fly or swim up and down) and by the listener
+    /// when the body is followed.
+    pub pitch: f32,
     /// Mass in kilograms (dynamic bodies), default 1.0. Heavier bodies push lighter ones
     /// further and lose less speed when they collide, and forces move them less. Kinematic
     /// bodies push dynamic ones regardless of mass.
@@ -140,6 +145,7 @@ impl Body {
             tag: String::new(),
             user_data: 0,
             facing: 0.0,
+            pitch: 0.0,
             mass: 1.0,
             max_speed: f32::INFINITY,
             on_ground: false,
@@ -243,6 +249,12 @@ impl Body {
     /// shape does not rotate.
     pub fn with_facing(mut self, degrees: f32) -> Self {
         self.facing = crate::math::normalize_angle(degrees);
+        self
+    }
+
+    /// Sets how far the body looks up (positive) or down (negative) in degrees, -90 to 90.
+    pub fn with_pitch(mut self, degrees: f32) -> Self {
+        self.pitch = degrees.clamp(-90.0, 90.0);
         self
     }
 
@@ -960,10 +972,47 @@ impl World {
         facing
     }
 
+    /// How far a body looks up (positive) or down (negative) in degrees (0 if it does not
+    /// exist).
+    pub fn pitch(&self, id: BodyId) -> f32 {
+        self.get(id).map_or(0.0, |b| b.pitch)
+    }
+
+    /// Sets how far a body looks up or down in degrees, clamped to -90..=90.
+    pub fn set_pitch(&mut self, id: BodyId, degrees: f32) {
+        if let Some(b) = self.get_mut(id) {
+            b.pitch = degrees.clamp(-90.0, 90.0);
+        }
+    }
+
+    /// Tilts a body's view up (positive degrees) or down (negative) and returns the new
+    /// pitch, -90.0 to 90.0. Together with [`World::turn`] this aims in any 3D direction.
+    pub fn tilt(&mut self, id: BodyId, degrees: f32) -> f32 {
+        let pitch = (self.pitch(id) + degrees).clamp(-90.0, 90.0);
+        self.set_pitch(id, pitch);
+        pitch
+    }
+
+    /// Turns a body so that it faces `point`: sets both the facing and the pitch.
+    pub fn look_at(&mut self, id: BodyId, point: Vec3) {
+        let (yaw, pitch) = crate::math::look_at(self.position(id), point);
+        self.set_facing(id, yaw);
+        self.set_pitch(id, pitch);
+    }
+
     /// Moves a body `distance` meters in the direction it faces (negative = backwards),
-    /// sliding along walls. See [`World::move_by`].
+    /// sliding along walls. The pitch counts too: a body looking 30° up also rises. With the
+    /// default pitch of 0 it moves level. See [`World::move_by`].
     pub fn move_forward(&mut self, id: BodyId, distance: f32) -> MoveResult {
-        let delta = crate::math::forward(self.facing(id)) * distance;
+        let delta = crate::math::forward_3d(self.facing(id), self.pitch(id)) * distance;
+        self.move_by(id, delta)
+    }
+
+    /// Moves a body `distance` meters straight up (negative = down), sliding along walls,
+    /// e.g. to fly, swim, climb a ladder or take a lift. "Up" is `+z`, or against gravity if
+    /// gravity points elsewhere. See [`World::move_by`].
+    pub fn move_up(&mut self, id: BodyId, distance: f32) -> MoveResult {
+        let delta = self.up() * distance;
         self.move_by(id, delta)
     }
 
@@ -983,7 +1032,9 @@ impl World {
 
     /// Where `target` is from the point of view of `from`, ready to speak:
     /// `"3 o'clock, 12 meters"`. Uses the facing of `from`: 12 o'clock is straight ahead,
-    /// 3 o'clock to the right, 6 o'clock behind.
+    /// 3 o'clock to the right, 6 o'clock behind. A height difference of a meter or more is
+    /// added (`"12 o'clock, 11 meters, 4 meters above"`), and a target straight above or
+    /// below is `"directly above, 5 meters"`. See [`math::describe_position`](crate::math::describe_position).
     ///
     /// ```no_run
     /// # use audio_code::prelude::*;
@@ -1279,5 +1330,26 @@ mod tests {
         assert_eq!(w.triggered(coin), Some(p));
         assert_eq!(w.entered_tag(p, "door"), None);
         assert!((w.position(p).x - 2.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn three_d_movement() {
+        let mut w = World::new();
+        let p = w.add(Body::kinematic(Vec3::ZERO).with_sphere(0.3));
+        let bird = w.add(Body::sensor(vec3(0.0, 4.0, 4.0)).with_sphere(0.3));
+        assert_eq!(w.describe(p, bird), "12 o'clock, 6 meters, 4 meters above");
+        assert_eq!(w.tilt(p, 45.0), 45.0);
+        assert_eq!(w.tilt(p, 100.0), 90.0);
+        w.set_pitch(p, 45.0);
+        w.move_forward(p, 2.0_f32.sqrt());
+        assert!((w.position(p) - vec3(0.0, 1.0, 1.0)).length() < 1e-4);
+        w.move_up(p, -3.0);
+        assert!((w.position(p).z + 2.0).abs() < 1e-4);
+        w.look_at(p, vec3(0.0, 1.0, 5.0));
+        assert!((w.pitch(p) - 90.0).abs() < 1e-3);
+        // A ceiling stops flying upwards.
+        w.add(Body::fixed(vec3(0.0, 1.0, 3.0)).with_box(10.0, 10.0, 1.0));
+        assert!(w.move_forward(p, 10.0).blocked);
+        assert!(w.position(p).z < 2.5);
     }
 }

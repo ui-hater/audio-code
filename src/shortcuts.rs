@@ -56,8 +56,8 @@ impl Context {
         self.once.insert(name.to_string())
     }
 
-    /// Makes the listener (the player's ears) follow a body every frame: its position and its
-    /// [`facing`](crate::physics::Body::facing). After this you never call
+    /// Makes the listener (the player's ears) follow a body every frame: its position, its
+    /// [`facing`](crate::physics::Body::facing) and its [`pitch`](crate::physics::Body::pitch). After this you never call
     /// `ctx.audio.set_listener` yourself.
     pub fn follow(&mut self, body: BodyId) {
         self.follow = Some(body);
@@ -122,9 +122,12 @@ impl Context {
         if let Some(id) = self.follow {
             match self.physics.get(id) {
                 Some(body) => {
-                    let (position, facing) = (body.position, body.facing);
-                    if position != self.audio.listener_position() || facing != self.audio.listener_yaw() {
-                        self.audio.set_listener(position, facing);
+                    let (position, facing, pitch) = (body.position, body.facing, body.pitch);
+                    if position != self.audio.listener_position()
+                        || facing != self.audio.listener_yaw()
+                        || pitch != self.audio.listener_pitch()
+                    {
+                        self.audio.set_listener_3d(position, facing, pitch);
                     }
                 }
                 None => self.follow = None,

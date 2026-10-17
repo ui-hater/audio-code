@@ -10,7 +10,35 @@
 //!
 //! Angles ("yaw" or "facing") are **compass degrees**: 0 = north, 90 = east, 180 = south,
 //! 270 = west. A 2D side scroller simply uses `x` for left/right and `z` for up/down, a top
-//! down game uses `x` and `y`.
+//! down game uses `x` and `y`, and a full 3D game uses all three.
+//!
+//! The angle up or down ("pitch") is in degrees too: 0 = level with the horizon, 90 =
+//! straight up, -90 = straight down.
+//!
+//! ## Positions: `vec3(x, y, z)`
+//!
+//! A position is a [`Vec3`] with three numbers in meters, written `vec3(x, y, z)`:
+//!
+//! * `x`: how far east (positive) or west (negative)
+//! * `y`: how far north (positive) or south (negative)
+//! * `z`: how far up (positive) or down (negative)
+//!
+//! `vec3(3.0, -2.0, 1.5)` is 3 m east, 2 m south and 1.5 m up from the origin
+//! `vec3(0.0, 0.0, 0.0)` (also written `Vec3::ZERO`). The same type describes directions and
+//! velocities: `vec3(0.0, 2.0, 0.0)` as a velocity is 2 m/s north.
+//!
+//! ```
+//! use audio_code::math::*;
+//!
+//! let player = vec3(3.0, -2.0, 1.5);
+//! let east = player.x;                              // 3.0
+//! let above = player + vec3(0.0, 0.0, 2.0);         // 2 m higher
+//! let ahead = player + forward(90.0) * 5.0;         // 5 m to the east
+//! let distance = player.distance(above);            // 2.0
+//! assert_eq!(east, 3.0);
+//! assert!((distance - 2.0).abs() < 1e-5);
+//! assert!((ahead.x - 8.0).abs() < 1e-5);
+//! ```
 
 pub use glam::{Vec2, Vec3, vec2, vec3};
 
@@ -35,6 +63,37 @@ pub fn forward(yaw: f32) -> Vec3 {
 /// Unit vector pointing to the right of the compass direction `yaw`.
 pub fn right(yaw: f32) -> Vec3 {
     forward(yaw + 90.0)
+}
+
+/// Unit vector pointing in compass direction `yaw`, tilted up by `pitch` degrees
+/// (90 = straight up, -90 = straight down). With `pitch` 0 it equals [`forward`].
+pub fn forward_3d(yaw: f32, pitch: f32) -> Vec3 {
+    let p = pitch.clamp(-90.0, 90.0).to_radians();
+    forward(yaw) * p.cos() + Vec3::Z * p.sin()
+}
+
+/// Unit vector pointing out of the top of the head of someone facing `yaw` and looking up
+/// by `pitch` degrees. With `pitch` 0 it is `+z`.
+pub fn up_3d(yaw: f32, pitch: f32) -> Vec3 {
+    let p = pitch.clamp(-90.0, 90.0).to_radians();
+    Vec3::Z * p.cos() - forward(yaw) * p.sin()
+}
+
+/// Angle in degrees from `from` up to `to`: 90 = straight above, 0 = same height,
+/// -90 = straight below.
+pub fn elevation(from: Vec3, to: Vec3) -> f32 {
+    let d = to - from;
+    let horizontal = d.x.hypot(d.y);
+    if horizontal == 0.0 && d.z == 0.0 {
+        return 0.0;
+    }
+    d.z.atan2(horizontal).to_degrees()
+}
+
+/// Compass direction (yaw) and pitch in degrees that point from `from` to `to`, e.g. to aim
+/// at a target or to make a body look at it.
+pub fn look_at(from: Vec3, to: Vec3) -> (f32, f32) {
+    (bearing(from, to), elevation(from, to))
 }
 
 /// Compass bearing in degrees from `from` to `to`, ignoring height.
@@ -66,13 +125,29 @@ pub fn clock_position(relative_degrees: f32) -> u32 {
     if hour == 0 { 12 } else { hour }
 }
 
-/// Describes where `target` is relative to someone at `from` facing `yaw`,
-/// e.g. `"3 o'clock, 12 meters"`. Ready to be spoken.
+/// Describes where `target` is relative to someone at `from` facing `yaw`, ready to be
+/// spoken. The distance is the straight line in 3D. A height difference (z) of a meter or
+/// more is added:
+///
+/// * `"3 o'clock, 12 meters"`: same height
+/// * `"12 o'clock, 11 meters, 4 meters above"`
+/// * `"directly below, 5 meters"`: nothing to the side
 pub fn describe_position(from: Vec3, yaw: f32, target: Vec3) -> String {
+    let d = target - from;
+    let meters = |n: i64| if n == 1 { "1 meter".to_string() } else { format!("{n} meters") };
+    let distance = meters(d.length().round() as i64);
+    if d.x.hypot(d.y) < 0.5 && d.z.abs() >= 0.5 {
+        let side = if d.z > 0.0 { "above" } else { "below" };
+        return format!("directly {side}, {distance}");
+    }
     let relative = angle_difference(yaw, bearing(from, target));
-    let distance = (target - from).length().round() as i64;
-    let unit = if distance == 1 { "meter" } else { "meters" };
-    format!("{} o'clock, {distance} {unit}", clock_position(relative))
+    let mut text = format!("{} o'clock, {distance}", clock_position(relative));
+    let height = d.z.round() as i64;
+    if height != 0 {
+        let side = if height > 0 { "above" } else { "below" };
+        text.push_str(&format!(", {} {side}", meters(height.abs())));
+    }
+    text
 }
 
 /// Linear interpolation between `a` and `b`.
@@ -132,5 +207,19 @@ mod tests {
         assert_eq!(clock_position(90.0), 3);
         assert_eq!(clock_position(0.0), 12);
         assert_eq!(describe_position(Vec3::ZERO, 0.0, Vec3::new(5.0, 0.0, 0.0)), "3 o'clock, 5 meters");
+    }
+
+    #[test]
+    fn three_d() {
+        assert!((forward_3d(0.0, 90.0) - Vec3::Z).length() < 1e-5);
+        assert!((forward_3d(90.0, 0.0) - Vec3::X).length() < 1e-5);
+        assert!((up_3d(0.0, 0.0) - Vec3::Z).length() < 1e-5);
+        assert!((up_3d(0.0, 90.0) + Vec3::Y).length() < 1e-5, "looking up, the head points south");
+        assert!((elevation(Vec3::ZERO, Vec3::new(3.0, 0.0, 3.0)) - 45.0).abs() < 1e-3);
+        let (yaw, pitch) = look_at(Vec3::ZERO, Vec3::new(0.0, -4.0, -4.0));
+        assert!((yaw - 180.0).abs() < 1e-3 && (pitch + 45.0).abs() < 1e-3);
+        assert_eq!(describe_position(Vec3::ZERO, 0.0, Vec3::new(0.0, 10.0, 4.0)), "12 o'clock, 11 meters, 4 meters above");
+        assert_eq!(describe_position(Vec3::ZERO, 0.0, Vec3::new(0.0, 0.0, -5.0)), "directly below, 5 meters");
+        assert_eq!(describe_position(Vec3::ZERO, 0.0, Vec3::new(0.0, 1.0, 0.0)), "12 o'clock, 1 meter");
     }
 }

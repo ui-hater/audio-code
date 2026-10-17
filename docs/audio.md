@@ -119,6 +119,14 @@ ctx.audio.set_listener(player_pos, facing);
 - `yaw`: the compass direction the player faces, in degrees: 0 = north (+y), 90 = east
   (+x), 180 = south, 270 = west. Values outside 0–360 are fine.
 
+`vec3(x, y, z)` is a point in meters: `x` east (negative = west), `y` north (negative =
+south), `z` up (negative = down). `vec3(10.0, 0.0, 2.0)` is 10 m east and 2 m up. See
+[Positions, directions and 3D](3d.md).
+
+To let the player look up or down as well, use `set_listener_3d(position, yaw, pitch)`.
+`pitch` is in degrees: 0 = level, 90 = straight up, -90 = straight down. `set_listener`
+is the same with a pitch of 0.
+
 The listener starts at the origin facing north. It keeps its position and facing until you
 call `set_listener` again. Sounds do not follow it by themselves. Call it every time the
 player moves or turns, usually once at the end of `update`. Calling it every frame is cheap.
@@ -135,14 +143,15 @@ music always sound the same, no matter where the listener is.
 For each positioned sound the engine:
 
 - turns the offset from the listener to the sound into the listener's own view, using
-  `yaw`: how far it is to the right and how far ahead
+  `yaw` and `pitch`: how far it is to the right, how far ahead and how far above the head
 - pans it left or right by that direction: a sound straight to the right is almost fully
-  in the right ear, a sound straight ahead or behind is centered
-- lowers the volume with distance: full volume up to `min`, silent at `max`
-  (`distance(min, max)` and `rolloff`). Height counts for the distance but not for the
-  panning
-- muffles it and lowers the volume a little when it is **behind** the listener, so you can
-  tell front from back on headphones
+  in the right ear, a sound straight ahead, behind, above or below is centered
+- lowers the volume with the 3D distance: full volume up to `min`, silent at `max`
+  (`distance(min, max)` and `rolloff`)
+- muffles it and lowers the volume by up to 30 % when it is **behind** the listener, so you
+  can tell front from back on headphones
+- dulls it a little and lowers the volume by up to 15 % when it is **below** the listener;
+  sounds above stay clear
 
 So turning matters as much as moving. In this example the same sound first comes from the
 right, then from straight ahead:
@@ -164,7 +173,7 @@ ctx.audio.set_listener(vec3(self.x, 0.0, 0.0), 0.0);
 ```
 
 If the player is a physics body, you do not need `set_listener` at all. `ctx.follow(body)`
-sets the listener to the body's position and `facing` after every frame (see
+sets the listener to the body's position, `facing` and `pitch` after every frame (see
 [Sounds that follow objects](#sounds-that-follow-objects)). Do not mix both: while a body is
 followed, the engine overwrites your own `set_listener` calls at the end of the frame.
 
