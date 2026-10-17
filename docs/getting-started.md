@@ -196,6 +196,7 @@ lists them all.
 ## Next steps
 
 - [Cheat sheet](cheatsheet.md)
+- [Architecture](architecture.md), if you want to know how it works inside
 - [Sound](audio.md)
 - [Virtual UI](ui.md)
 - [Physics](physics.md)

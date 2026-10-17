@@ -68,6 +68,11 @@ mod window;
 pub mod wx;
 
 pub use engine::{Context, Engine, Runner, Scene};
+
+// Compiles the code blocks in the README as doc tests, so they cannot go stale.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
 pub use error::{Error, Result};
 
 /// The quickest way to start: a whole game as one closure that runs every frame.

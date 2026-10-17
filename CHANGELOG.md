@@ -35,4 +35,6 @@ First version.
   - `Input::axis` and `Input::movement`
   - `ctx.storage`: key-value saving, written on quit (`Engine::save_file`)
   - cheat sheet in `docs/cheatsheet.md`
+- Detailed README with an explained example game, and `docs/architecture.md` explaining
+  the internals; README code blocks are compiled as doc tests
 - Synthetic key presses on window focus are ignored

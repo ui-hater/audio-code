@@ -77,4 +77,4 @@ cargo run    --no-default-features --features nvda,wxdragon --example wx_game
 
 ## Docs
 
-User docs live in `docs/*.md` (guide per topic) plus the README feature table and `CHANGELOG.md`. When adding or changing public API, update the matching docs page and the changelog.
+User docs live in `docs/*.md` (guide per topic), `docs/cheatsheet.md`, the README and `CHANGELOG.md`. `docs/architecture.md` explains the internals (frame order, mixer math, physics algorithm, UI state machine). Keep it accurate when changing those parts. The README's Rust code blocks are compiled as doc tests (`ReadmeDoctests` in `lib.rs`), so they must be complete programs marked `rust,no_run`, and other blocks need a language tag (`text`, `sh`, `toml`). When adding or changing public API, update the matching docs page and the changelog.
