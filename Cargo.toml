@@ -1,0 +1,29 @@
+[package]
+name = "audio-code"
+version = "0.1.0"
+edition = "2024"
+description = "A simple, high level game engine for audio games: 3D sound, speech, virtual menus, physics and timing. No graphics required."
+license = "MIT"
+readme = "README.md"
+keywords = ["audiogame", "accessibility", "gamedev", "audio", "screen-reader"]
+categories = ["game-engines", "accessibility", "multimedia::audio"]
+
+[features]
+default = ["prism"]
+## Speech and braille output through screen readers / TTS via the prism library.
+prism = ["dep:prismer"]
+## Run games inside a wxWidgets window (via wxDragon) instead of the built-in winit window.
+wxdragon = ["dep:wxdragon"]
+
+[dependencies]
+cpal = "0.18.2"
+fastrand = "2.5.0"
+glam = "0.34.1"
+prismer = { version = "0.1.4", features = ["static"], optional = true }
+symphonia = { version = "0.6.1", features = ["all"] }
+winit = "0.30.13"
+wxdragon = { version = "0.9.23", optional = true }
+
+[[example]]
+name = "wx_game"
+required-features = ["wxdragon"]
