@@ -54,13 +54,24 @@ impl Shape {
 }
 
 /// How a body takes part in the simulation.
+///
+/// | Kind | Moved by | Gravity | Blocks others |
+/// |------|----------|---------|---------------|
+/// | `Fixed` | nothing (only [`World::set_position`]) | no | yes |
+/// | `Dynamic` | velocity, gravity, forces, collisions | yes | yes |
+/// | `Kinematic` | your code ([`World::move_by`]) or its velocity, which ignores walls | no | yes |
+/// | `Sensor` | nothing (only [`World::set_position`]) | no | no, it only reports [`PhysicsEvent::Entered`] and [`PhysicsEvent::Left`] |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyKind {
-    /// Moved by velocity and gravity, pushed out of other solids.
+    /// Moved by velocity and gravity, pushed out of other solids. The only kind that has
+    /// `on_ground`, can [`jump`](World::jump) and creates collision and landing events.
     Dynamic,
     /// Never moves on its own (walls, floors). Other bodies collide with it.
     Fixed,
-    /// Moved only by your code (velocity is applied, gravity is not). Blocks dynamic bodies.
+    /// Moved only by your code. Its velocity is applied without collision checks, so it
+    /// passes through walls (right for lifts and platforms); move a kinematic player with
+    /// [`World::move_by`], which stops at walls. Gravity does not pull it. Blocks dynamic
+    /// bodies and pushes them when it moves into them.
     Kinematic,
     /// Does not block anything, only reports when bodies enter and leave it.
     Sensor,
@@ -69,21 +80,27 @@ pub enum BodyKind {
 /// A physical object.
 #[derive(Debug, Clone)]
 pub struct Body {
-    /// Center position.
+    /// Center of the body in meters (`+x` east, `+y` north, `+z` up).
     pub position: Vec3,
-    /// Velocity in meters per second.
+    /// Velocity in meters per second. Ignored for fixed bodies and sensors.
     pub velocity: Vec3,
     /// Collision shape.
     pub shape: Shape,
     /// How the body is simulated.
     pub kind: BodyKind,
-    /// Multiplier for world gravity (dynamic bodies only).
+    /// Multiplier for world gravity (dynamic bodies only). Default 1.0; 0.0 ignores
+    /// gravity, 0.5 floats, negative values rise.
     pub gravity_scale: f32,
-    /// How much speed is kept when bouncing off something, 0.0 (none) to 1.0 (all).
+    /// How much speed is kept when bouncing off something, 0.0 (stops dead, the default)
+    /// to 1.0 (bounces back at full speed). When two bodies touch, the larger value counts.
     pub bounciness: f32,
-    /// Velocity damping per second while touching the ground, 0.0 = ice.
+    /// Fraction of the sideways speed removed per second while standing on the ground.
+    /// Default 8.0 (stops within about a quarter second), 0.0 = ice. Never slows down jumps
+    /// or falls. Dynamic bodies only.
     pub friction: f32,
-    /// Velocity damping per second at all times (air resistance).
+    /// Fraction of the speed removed per second at all times and in every direction (air or
+    /// water resistance). Default 0.0; 0.1–0.5 is light air drag, 2–5 feels like water.
+    /// Dynamic bodies only.
     pub damping: f32,
     /// Free text to recognize bodies in events, e.g. `"wall"` or `"coin"`.
     pub tag: String,
@@ -93,13 +110,15 @@ pub struct Body {
     /// rotate; this is used by [`World::move_forward`], [`World::turn`] and the listener
     /// when a body is followed with [`Context::follow`](crate::Context::follow).
     pub facing: f32,
-    /// Mass in kilograms (dynamic bodies). Heavier bodies push lighter ones further and lose
-    /// less speed when they collide.
+    /// Mass in kilograms (dynamic bodies), default 1.0. Heavier bodies push lighter ones
+    /// further and lose less speed when they collide, and forces move them less. Kinematic
+    /// bodies push dynamic ones regardless of mass.
     pub mass: f32,
     /// Speed limit in meters per second, e.g. a terminal velocity when falling.
     /// `f32::INFINITY` (the default) means no limit.
     pub max_speed: f32,
     /// Whether the body touched the ground (something below it) during the last step.
+    /// Only updated for dynamic bodies.
     pub on_ground: bool,
     /// The body this one stands on, if any. Bodies standing on a moving kinematic body
     /// (a lift, a platform) are carried along.
@@ -129,7 +148,8 @@ impl Body {
         }
     }
 
-    /// A body moved by physics. Default shape: 1 meter cube.
+    /// A body moved by velocity, gravity, forces and collisions, such as a ball, a crate or
+    /// the player in a platformer. Default shape: 1 meter cube.
     pub fn dynamic(position: Vec3) -> Self {
         Self::new(BodyKind::Dynamic, position)
     }
@@ -139,59 +159,69 @@ impl Body {
         Self::new(BodyKind::Fixed, position)
     }
 
-    /// A body only moved by your code (doors, platforms, a player you move yourself).
+    /// A body only moved by your code: the player in a top down game (move it with
+    /// [`World::move_by`]), doors, lifts and moving platforms (move them with
+    /// [`World::set_velocity`]). Default shape: 1 meter cube.
     pub fn kinematic(position: Vec3) -> Self {
         Self::new(BodyKind::Kinematic, position)
     }
 
-    /// An invisible trigger area.
+    /// An invisible trigger area that does not block anything. Read
+    /// [`World::entered`] / [`World::entered_tag`] to learn when a body walks in.
     pub fn sensor(position: Vec3) -> Self {
         Self::new(BodyKind::Sensor, position)
     }
 
-    /// Box shape with full width (x), depth (y) and height (z).
+    /// Box shape with full width (x, east-west), depth (y, north-south) and height (z) in
+    /// meters. `with_box(2.0, 2.0, 2.0)` reaches 1 m from the center in every direction.
     pub fn with_box(mut self, width: f32, depth: f32, height: f32) -> Self {
         self.shape = Shape::Box(Vec3::new(width, depth, height) * 0.5);
         self
     }
 
-    /// Sphere shape.
+    /// Sphere shape with a radius in meters. 0.3–0.5 is a good player size.
     pub fn with_sphere(mut self, radius: f32) -> Self {
         self.shape = Shape::Sphere(radius);
         self
     }
 
-    /// Sets a tag.
+    /// Sets a tag, free text to recognize the body in events and queries
+    /// (e.g. `"wall"`, `"coin"`). See [`World::tag`] and [`World::entered_tag`].
     pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
         self.tag = tag.into();
         self
     }
 
-    /// Sets the initial velocity.
+    /// Sets the initial velocity in meters per second.
     pub fn with_velocity(mut self, velocity: Vec3) -> Self {
         self.velocity = velocity;
         self
     }
 
-    /// Sets bounciness (0.0 to 1.0).
+    /// Sets bounciness: 0.0 stops dead (default), 1.0 bounces back at full speed. A ball
+    /// is about 0.6–0.9, a crate 0.1–0.3. See [`Body::bounciness`].
     pub fn with_bounciness(mut self, bounciness: f32) -> Self {
         self.bounciness = bounciness.clamp(0.0, 1.0);
         self
     }
 
-    /// Sets ground friction.
+    /// Sets ground friction: the fraction of sideways speed removed per second while on the
+    /// ground. Default 8.0 (stops within about 0.3 s), 2.0 slides for about a second, 0.0 is
+    /// ice. See [`Body::friction`].
     pub fn with_friction(mut self, friction: f32) -> Self {
         self.friction = friction.max(0.0);
         self
     }
 
-    /// Sets air damping.
+    /// Sets air damping: the fraction of speed removed per second, always and in every
+    /// direction. Default 0.0. See [`Body::damping`].
     pub fn with_damping(mut self, damping: f32) -> Self {
         self.damping = damping.max(0.0);
         self
     }
 
-    /// Sets the gravity multiplier.
+    /// Sets the gravity multiplier: 1.0 normal (default), 0.5 floats, 0.0 no gravity,
+    /// negative values rise.
     pub fn with_gravity_scale(mut self, scale: f32) -> Self {
         self.gravity_scale = scale;
         self
@@ -209,13 +239,14 @@ impl Body {
         self
     }
 
-    /// Sets the compass direction the body faces.
+    /// Sets the compass direction the body faces in degrees (0 = north, 90 = east). The
+    /// shape does not rotate.
     pub fn with_facing(mut self, degrees: f32) -> Self {
         self.facing = crate::math::normalize_angle(degrees);
         self
     }
 
-    /// Sets user data.
+    /// Sets a free number for your own data, e.g. an index into your enemy list.
     pub fn with_user_data(mut self, data: u64) -> Self {
         self.user_data = data;
         self
@@ -245,13 +276,16 @@ impl Body {
 /// Something that happened during the physics steps of this frame.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PhysicsEvent {
-    /// Two solid bodies started touching. `speed` is how fast they hit each other.
+    /// A dynamic body started touching another solid body during a physics step.
+    /// [`World::move_by`] does not create this event; use [`MoveResult::hits`] instead.
     CollisionStarted {
-        /// The moving body.
+        /// The dynamic body that moved.
         a: BodyId,
         /// The body it hit.
         b: BodyId,
-        /// Impact speed in meters per second.
+        /// Impact speed in meters per second: how fast the two came together along the
+        /// contact direction. Sliding along a wall gives a low value, running into it a high
+        /// one. Good for the volume of impact sounds.
         speed: f32,
     },
     /// Two solid bodies stopped touching.
@@ -271,7 +305,7 @@ pub enum PhysicsEvent {
         /// Falling speed at impact in meters per second.
         speed: f32,
     },
-    /// A body entered a sensor.
+    /// A solid body entered a sensor.
     Entered {
         /// The sensor.
         sensor: BodyId,
@@ -321,20 +355,22 @@ pub struct RayHit {
     pub body: BodyId,
     /// Where the ray hit.
     pub point: Vec3,
-    /// Distance from the ray origin.
+    /// Distance from the ray origin in meters.
     pub distance: f32,
-    /// Surface direction at the hit point.
+    /// Direction the hit surface faces (length 1), e.g. `-y` for the south side of a wall.
     pub normal: Vec3,
 }
 
 /// Result of [`World::move_by`].
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MoveResult {
-    /// How far the body actually moved.
+    /// How far the body actually moved, in meters. Shorter than the requested delta when a
+    /// wall was in the way.
     pub moved: Vec3,
-    /// `true` if something stopped part of the movement.
+    /// `true` if something stopped part of the movement. Also `true` when the body slid
+    /// along a wall it walked into at an angle.
     pub blocked: bool,
-    /// Bodies that were hit, in order.
+    /// Solid bodies that were touched on the way, in order.
     pub hits: Vec<BodyId>,
 }
 
@@ -502,7 +538,8 @@ impl World {
         }
     }
 
-    /// Adds an instant change of velocity, e.g. a jump: `apply_impulse(player, vec3(0.0, 0.0, 5.0))`.
+    /// Adds `impulse` (meters per second) to the velocity at once, regardless of mass,
+    /// e.g. a kick or knockback: `apply_impulse(ball, vec3(0.0, 10.0, 0.0))`.
     pub fn apply_impulse(&mut self, id: BodyId, impulse: Vec3) {
         if let Some(b) = self.get_mut(id) {
             b.velocity += impulse;
@@ -510,15 +547,18 @@ impl World {
     }
 
     /// Pushes a body with a force in newtons during the next physics step, e.g. wind,
-    /// a conveyor belt or a rocket. Call it every frame for a continuous force.
+    /// a conveyor belt or a rocket. Each second, a force adds `force / mass` meters per
+    /// second to the velocity, so 20 N speed up a 1 kg body by 20 m/s per second and a
+    /// 10 kg body by 2 m/s per second. Call it every frame for a continuous force.
     pub fn apply_force(&mut self, id: BodyId, force: Vec3) {
         if let Some(b) = self.get_mut(id) {
             b.force += force;
         }
     }
 
-    /// Makes a body standing on the ground jump so that it reaches `height` meters,
-    /// taking gravity into account. Returns `false` (and does nothing) while in the air.
+    /// Makes a dynamic body standing on the ground jump so that it reaches `height` meters
+    /// above where it stands, taking the current gravity into account. Returns `false` (and
+    /// does nothing) while in the air, without gravity, or for other body kinds.
     ///
     /// ```no_run
     /// # use audio_code::prelude::*;
@@ -543,7 +583,7 @@ impl World {
         true
     }
 
-    /// Whether a body stands on something.
+    /// Whether a dynamic body stands on something (always `false` for other kinds).
     pub fn on_ground(&self, id: BodyId) -> bool {
         self.get(id).is_some_and(|b| b.on_ground)
     }
@@ -621,8 +661,9 @@ impl World {
             .map(|(id, _)| *id)
     }
 
-    /// Casts a ray and returns the first solid body hit within `max_distance`.
-    /// `ignore` is skipped (pass the caster itself). Sensors are ignored.
+    /// Sends a straight line from `origin` in `direction` (any length) and returns the first
+    /// solid body hit within `max_distance` meters. `ignore` is skipped: pass the caster
+    /// itself, otherwise the ray hits it first. Sensors are ignored.
     pub fn raycast(&self, origin: Vec3, direction: Vec3, max_distance: f32, ignore: Option<BodyId>) -> Option<RayHit> {
         let dir = direction.normalize_or_zero();
         if dir == Vec3::ZERO {
@@ -647,8 +688,10 @@ impl World {
         best
     }
 
-    /// Moves a body by `delta` right now, sliding along and stopping at solid bodies.
-    /// This is the easiest way to move a player: walls block, and you learn what was hit.
+    /// Moves a body by `delta` meters right now, sliding along and stopping at solid bodies,
+    /// and pushing dynamic bodies out of the way. This is the easiest way to move a player:
+    /// walls block, and you learn what was hit. Sensor events are updated at once;
+    /// [`PhysicsEvent::CollisionStarted`] is not created.
     pub fn move_by(&mut self, id: BodyId, delta: Vec3) -> MoveResult {
         let Some(body) = self.bodies.get(&id) else {
             return MoveResult::default();
@@ -909,7 +952,8 @@ impl World {
         }
     }
 
-    /// Turns a body by `degrees` (positive = clockwise / right) and returns the new facing.
+    /// Turns a body by `degrees` (positive = clockwise / right, negative = left) and returns
+    /// the new facing, 0.0 to 360.0.
     pub fn turn(&mut self, id: BodyId, degrees: f32) -> f32 {
         let facing = crate::math::normalize_angle(self.facing(id) + degrees);
         self.set_facing(id, facing);
@@ -938,7 +982,8 @@ impl World {
     }
 
     /// Where `target` is from the point of view of `from`, ready to speak:
-    /// `"3 o'clock, 12 meters"`. Uses the facing of `from`.
+    /// `"3 o'clock, 12 meters"`. Uses the facing of `from`: 12 o'clock is straight ahead,
+    /// 3 o'clock to the right, 6 o'clock behind.
     ///
     /// ```no_run
     /// # use audio_code::prelude::*;
@@ -952,7 +997,8 @@ impl World {
 
     // ------------------------------------------------------------- event shortcuts
 
-    /// If `body` landed on something this frame: the falling speed.
+    /// If `body` landed on something this frame: the falling speed in meters per second.
+    /// With earth gravity, a 1 m fall lands at about 4.4 m/s, a 3 m fall at 7.7 m/s.
     pub fn landed(&self, body: BodyId) -> Option<f32> {
         self.events.iter().find_map(|e| match *e {
             PhysicsEvent::Landed { body: b, speed, .. } if b == body => Some(speed),

@@ -36,8 +36,8 @@ let all = ctx.speech.history();
 ## Options
 
 ```rust
-ctx.speech.set_rate(0.7);      // only for TTS voices; screen readers keep user settings
-ctx.speech.set_volume(0.9);
+ctx.speech.set_rate(0.7);      // 0.0 slowest to 1.0 fastest; only for TTS voices, screen readers keep user settings
+ctx.speech.set_volume(0.9);    // 0.0 silent to 1.0 full; also only for TTS voices
 ctx.speech.set_muted(true);
 ctx.speech.set_echo(true);     // also print to the console
 ctx.speech.backend_name();     // e.g. Some("NVDA")

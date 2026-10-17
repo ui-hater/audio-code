@@ -6,15 +6,46 @@ stand on floors, fall, trigger zones and cast rays to check what is ahead.
 There are only boxes and spheres, and bodies never rotate. This keeps behavior predictable
 and easy to describe with sound.
 
-## Coordinate system
+This page first explains the ideas (units, body kinds, what happens in a step), then each
+part of the API. If you only want to get going, read [Units and directions](#units-and-directions),
+[Body kinds](#body-kinds) and [Which setup for my game?](#which-setup-for-my-game).
 
-- `+x` = east / right, `+y` = north / forward, `+z` = up
-- Angles are compass degrees: 0 = north, 90 = east
+## Units and directions
 
-A top down game uses x and y and no gravity. A side scroller uses x and z with gravity
-`EARTH_GRAVITY` (`vec3(0.0, 0.0, -9.81)`).
+| Quantity  | Unit                     | Example                                 |
+|-----------|--------------------------|-----------------------------------------|
+| position  | meters                   | `vec3(3.0, 10.0, 0.0)`: 3 m east, 10 m north |
+| size      | meters                   | `with_box(1.0, 1.0, 1.8)`: a person      |
+| velocity  | meters per second        | `vec3(0.0, 2.0, 0.0)`: 2 m/s north (a walk) |
+| gravity   | meters per second²       | `EARTH_GRAVITY` = `vec3(0.0, 0.0, -9.81)` |
+| mass      | kilograms                | `with_mass(80.0)`                        |
+| force     | newtons (kg · m/s²)      | `apply_force(id, vec3(20.0, 0.0, 0.0))`  |
+| angle     | compass degrees          | 0 = north, 90 = east, 180 = south, 270 = west |
+| time      | seconds                  | the physics step is 1/60 s by default    |
 
-## Bodies
+Axes:
+
+- `+x` = east / right
+- `+y` = north / forward
+- `+z` = up
+
+A top down game uses x and y and no gravity. A side scroller uses x (left/right) and z
+(up/down) with gravity pulling towards `-z`. A position is always the **center** of the
+body: a 1.8 m tall box standing on a floor at `z = 0` has its center at `z = 0.9`.
+
+Some handy speeds for orientation: walking 1.5 m/s, running 5 m/s, a car in town 14 m/s,
+a fall from 2 m hits the ground at about 6 m/s.
+
+## Body kinds
+
+Every body has one of four kinds. The kind decides what moves the body and what it reacts to.
+
+| Kind | Moved by | Gravity | Blocks others | Is pushed out of walls | Typical use |
+|------|----------|---------|---------------|------------------------|-------------|
+| `Body::fixed` | nothing, only `set_position` | no | yes | – | walls, floors, furniture |
+| `Body::dynamic` | velocity, gravity, forces, collisions | yes | yes | yes, every step | falling things, balls, crates, the player in a platformer |
+| `Body::kinematic` | your code: `move_by`, or its velocity | no | yes | only during `move_by` | the player in a top down game, lifts, doors, moving platforms |
+| `Body::sensor` | nothing, only `set_position` | no | no | – | trigger zones, pickups, rooms |
 
 ```rust
 // Walls and floors: never move.
@@ -30,9 +61,110 @@ let player = ctx.physics.add(Body::kinematic(Vec3::ZERO).with_sphere(0.4).with_t
 let door = ctx.physics.add(Body::sensor(vec3(0.0, 9.0, 0.0)).with_box(2.0, 1.0, 3.0).with_tag("door"));
 ```
 
-`with_box(width, depth, height)` takes full sizes. Other settings are `with_velocity`,
-`with_friction` (ground damping), `with_damping` (air), `with_gravity_scale`, and
-`with_user_data` (your own number, e.g. an index into your enemy list).
+Things that surprise people:
+
+- A **kinematic** body that moves by its velocity (`set_velocity`) goes **through** walls.
+  That is what you want for a lift, but not for a player. Move a kinematic player with
+  `move_by`, `move_forward` or `strafe`, which stop at walls.
+- `on_ground`, `jump`, `Landed` and `CollisionStarted` only work for **dynamic** bodies,
+  because only they are simulated with gravity and collisions.
+- Sensors only notice bodies that are solid (dynamic, kinematic or fixed), not other sensors.
+- Sensors and fixed bodies ignore their velocity.
+
+## Which setup for my game?
+
+**Top down game** (walk around a level, turn with the arrow keys, no falling):
+
+- no gravity (the default)
+- player: `Body::kinematic(..).with_sphere(0.4)`
+- move with `move_forward` / `strafe` / `move_by` and react to `result.blocked` and
+  `result.hits`
+- walls: `Body::fixed` or a [text map](#levels-from-text-maps)
+
+```rust
+let player = ctx.physics.add(Body::kinematic(start).with_sphere(0.4));
+ctx.follow(player);
+// in update:
+if ctx.input.repeating(Key::Up, 0.4, 0.4) && ctx.physics.move_forward(player, 1.0).blocked {
+    ctx.play("bump");
+}
+```
+
+**Side scroller / platformer** (run left and right, jump, fall):
+
+- gravity on: `Engine::new(..).gravity(EARTH_GRAVITY)`
+- player: `Body::dynamic(..).with_box(0.8, 0.8, 1.6)`, facing north (the default) so that
+  x maps to left and right in the ears
+- run by setting the x part of the velocity, jump with `jump`, use `landed` and
+  `collided` for sounds
+
+```rust
+let player = ctx.physics.add(Body::dynamic(vec3(0.0, 0.0, 1.0)).with_box(0.8, 0.8, 1.6));
+// in update:
+let mut velocity = ctx.physics.velocity(player);
+velocity.x = ctx.input.axis(Key::Left, Key::Right) * 6.0;   // 6 m/s
+ctx.physics.set_velocity(player, velocity);
+if ctx.pressed(Key::Space) && ctx.physics.jump(player, 1.5) {
+    ctx.play("jump");
+}
+```
+
+`examples/beacon.rs` is a complete top down game, `examples/platformer.rs` a complete
+platformer.
+
+## Shapes
+
+```rust
+Body::fixed(pos).with_box(20.0, 1.0, 3.0)   // width (x), depth (y), height (z), full sizes
+Body::kinematic(pos).with_sphere(0.4)        // radius
+```
+
+`with_box` takes **full** sizes, so `with_box(2.0, 2.0, 2.0)` reaches 1 m from the center
+in every direction. A body without a shape is a 1 m cube. Boxes always stay aligned with
+the axes. A sphere is a good player shape in top down games, because it slides smoothly
+around corners.
+
+## Body settings
+
+All settings are optional. They are set with `with_*` when creating a body, or later
+through `ctx.physics.get_mut(id)` (the fields have the same names).
+
+| Setting | Default | Meaning | Typical values |
+|---------|---------|---------|----------------|
+| `with_tag("coin")` | `""` | Free text to recognize the body in events and queries. | `"wall"`, `"enemy"`, `"door"` |
+| `with_user_data(n)` | `0` | Free number for your own data. | an index into your enemy list |
+| `with_velocity(v)` | zero | Start velocity in m/s. | |
+| `with_facing(deg)` | `0.0` (north) | Compass direction the body faces. The shape does **not** rotate. Used by `move_forward`, `strafe`, `describe` and `ctx.follow`. | `0.0`–`360.0` |
+| `with_mass(kg)` | `1.0` | Weight in kilograms. Only matters between two dynamic bodies and for forces. | crate 5–20, person 70–80 |
+| `with_bounciness(b)` | `0.0` | How much speed is kept when bouncing off something, from `0.0` (stops dead) to `1.0` (bounces back at full speed). When two bodies touch, the larger value of both counts. | ball 0.6–0.9, crate 0.1–0.3 |
+| `with_friction(f)` | `8.0` | How fast the body slows down sideways while it stands on the ground. See the table below. `0.0` is ice. | 0–20 |
+| `with_damping(d)` | `0.0` | Like friction, but always and in every direction, also in the air (air or water resistance). Also slows down falling. | air 0.0–0.5, water 2–5 |
+| `with_gravity_scale(s)` | `1.0` | Multiplies the world gravity for this body. `0.5` floats, `0.0` ignores gravity, negative values rise. | 0.0–2.0 |
+| `with_max_speed(v)` | no limit | Speed limit in m/s, in any direction. Works as a terminal velocity when falling. | 20–50 |
+
+Mass, bounciness, friction, damping, gravity scale and max speed only affect **dynamic**
+bodies. Bounciness of a wall still counts when a dynamic body hits it.
+
+### Friction and damping in numbers
+
+Friction and damping are "fraction of speed removed per second". Each physics step the
+speed is multiplied by `1 - value * step_time`. At the default 60 steps per second:
+
+| Value | Speed halved after | Down to 10 % after | Feels like |
+|-------|--------------------|--------------------|------------|
+| 0     | never              | never              | ice, space |
+| 1     | 0.7 s              | 2.3 s              | rolling ball |
+| 2     | 0.34 s             | 1.1 s              | sliding on a smooth floor |
+| 4     | 0.17 s             | 0.56 s             | |
+| 8 (default friction) | 0.08 s | 0.27 s         | a person stopping |
+| 20    | 0.03 s             | 0.1 s              | stops almost at once |
+
+Friction only works while the body stands on something (`on_ground`) and only on the
+sideways part of the velocity, so it never slows down a jump or a fall. If you set the
+running speed yourself every frame (like the platformer above), friction still takes a bit
+off in each step: with friction 8 a body you set to 6 m/s moves at about 5.2 m/s. Use
+`with_friction(0.0)` if you need the exact speed, and set the velocity to zero yourself to
+stop.
 
 ## Levels from text maps
 
@@ -53,9 +185,17 @@ for spot in level.points('C') {
 }
 ```
 
-`#` becomes a wall (tag `"wall"`, 3 m high), `.` and spaces are floor, and every other
-character is a point you can look up. The first line is north. The indentation of the map
-does not matter.
+- The second argument is the tile size in meters: each character becomes a square of that
+  size.
+- `#` becomes a wall (fixed body, tag `"wall"`, 3 m high).
+- `.` and spaces are empty floor. No body is created for them; a top down game needs no
+  floor because there is no gravity.
+- Every other character is a point you can look up with `level.point(c)` (the first one)
+  or `level.points(c)` (all of them, from north-west to south-east). The point is the
+  center of the tile at `z = 0`.
+- The first line is north, the left column is west. The south-west corner of the map is at
+  `x = 0, y = 0`, and `level.size()` returns the size in meters. The indentation of the map
+  does not matter.
 
 ## Facing, turning and walking
 
@@ -63,15 +203,31 @@ Shapes never rotate, but every body has a `facing` (compass degrees), which is i
 the player:
 
 ```rust
-ctx.physics.turn(player, 45.0);                          // returns the new facing
-let result = ctx.physics.move_forward(player, 1.0);      // or -1.0 to walk backwards
-ctx.physics.strafe(player, 1.0);                         // sideways to the right
-ctx.physics.facing(player);
+ctx.physics.turn(player, 45.0);                          // 45° to the right, returns the new facing
+ctx.physics.turn(player, -90.0);                         // 90° to the left
+let result = ctx.physics.move_forward(player, 1.0);      // 1 m ahead, -1.0 walks backwards
+ctx.physics.strafe(player, 1.0);                         // 1 m sideways to the right, -1.0 left
+ctx.physics.facing(player);                              // 0.0 to 360.0
 ctx.speak(ctx.physics.describe(player, beacon));         // "2 o'clock, 8 meters"
 ctx.follow(player);                                      // listener uses position and facing
 ```
 
-## Moving the player: `move_by`
+`describe` gives the direction as a clock position relative to the facing: 12 o'clock is
+straight ahead, 3 o'clock to the right, 6 o'clock behind.
+
+## Moving bodies
+
+There are five ways to move a body. Pick by what you want to happen:
+
+| Call | What it does | When it happens | Collisions |
+|------|--------------|-----------------|------------|
+| `move_by(id, delta)` | moves by `delta` meters | right now | stops at and slides along walls, pushes dynamic bodies, returns a `MoveResult` |
+| `set_velocity(id, v)` | sets the speed in m/s | in every following step | dynamic: yes; kinematic: **no**, it passes through walls |
+| `apply_impulse(id, v)` | adds `v` m/s to the velocity once (a kick) | from the next step | like `set_velocity` |
+| `apply_force(id, f)` | pushes with `f` newtons during the next step only | next step | like `set_velocity` |
+| `set_position(id, pos)` | teleports | right now | none, the body may end up inside a wall |
+
+### `move_by`: the character controller
 
 `move_by` moves a body immediately. It slides along walls and tells you what happened:
 
@@ -87,6 +243,31 @@ for hit in &result.hits {
 }
 ```
 
+The `MoveResult` contains:
+
+- `moved`: how far the body really moved. Shorter than `delta` when a wall was in the way.
+- `blocked`: `true` if something stopped part of the movement. Walking diagonally into a
+  wall still slides along it, but `blocked` is `true`.
+- `hits`: every solid body touched on the way, in order.
+
+`move_by` does not create `CollisionStarted` events; use `hits` instead. It does update
+sensors, so `entered` and `left` work right away. Big moves are split into small pieces,
+so even a 10 m jump does not pass through a thin wall.
+
+### Velocity, impulses and forces
+
+```rust
+ctx.physics.set_velocity(player, vec3(5.0, 0.0, 0.0));   // 5 m/s east from now on
+ctx.physics.apply_impulse(ball, vec3(0.0, 10.0, 0.0));   // instant kick: +10 m/s north
+ctx.physics.apply_force(boat, vec3(20.0, 0.0, 0.0));     // 20 N east, for one step
+```
+
+- An **impulse** changes the velocity directly, no matter how heavy the body is. Use it for
+  kicks, explosions and knockback.
+- A **force** respects mass: each second it adds `force / mass` m/s. 20 N on a 1 kg body
+  adds 20 m/s per second, on a 10 kg body only 2 m/s per second. A force only lasts for one
+  step, so call `apply_force` every frame for wind, currents or engines.
+
 ## Gravity
 
 There is no gravity by default, which suits top down games. Turn it on when the engine
@@ -98,9 +279,11 @@ ctx.physics.set_gravity(EARTH_GRAVITY * 2.0);           // snappier platformer
 ctx.physics.set_gravity(vec3(0.0, 0.0, -1.6));          // moon
 ```
 
-Gravity only pulls **dynamic** bodies. `with_gravity_scale(0.5)` makes a body float,
-`with_gravity_scale(0.0)` turns gravity off for it, and a negative value makes it rise.
-`with_max_speed(30.0)` sets a terminal velocity.
+Gravity is an acceleration: every second a falling body gets 9.81 m/s faster. Real gravity
+feels slow and floaty in games, so many platformers use 2 to 3 times `EARTH_GRAVITY`.
+
+Gravity only pulls **dynamic** bodies. `with_gravity_scale` changes it per body and
+`with_max_speed` sets a terminal velocity.
 
 ## Jumping, falling and landing
 
@@ -111,12 +294,10 @@ if ctx.input.pressed(Key::Space) && ctx.physics.jump(player, 1.5) {
 }
 
 // Landing sounds and fall damage.
-for event in ctx.physics.events().to_vec() {
-    if let PhysicsEvent::Landed { body, on, speed } = event {
-        ctx.audio.sound("land").volume((speed / 12.0).min(1.0)).play();
-        if speed > 15.0 {
-            ctx.speech.speak("Ouch!");
-        }
+if let Some(speed) = ctx.physics.landed(player) {
+    ctx.audio.sound("land").volume((speed / 12.0).min(1.0)).play();
+    if speed > 15.0 {
+        ctx.speech.speak("Ouch!");
     }
 }
 
@@ -124,54 +305,83 @@ ctx.physics.on_ground(player);
 ctx.physics.get(player).unwrap().ground;   // Some(body you stand on)
 ```
 
-## Velocity, impulses and forces
+`jump(id, height)` takes the height in **meters**, not a speed. It computes the needed
+upward speed from the current gravity, so a jump stays 1.5 m high even if you change
+gravity. It only works for a dynamic body that stands on something and when there is
+gravity; otherwise it returns `false` and does nothing. Damping makes the jump a bit lower.
 
-```rust
-ctx.physics.set_velocity(player, vec3(5.0, 0.0, 0.0));
-ctx.physics.apply_impulse(ball, vec3(0.0, 10.0, 0.0));   // instant kick
-ctx.physics.apply_force(boat, vec3(20.0, 0.0, 0.0));     // newtons, for one step: call every frame for wind or engines
-```
+How long a jump lasts (up and down again):
 
-Forces respect mass: the same force moves a body with `with_mass(10.0)` ten times slower
-than a 1 kg body.
+| Height | `EARTH_GRAVITY` | `EARTH_GRAVITY * 2.0` |
+|--------|-----------------|-----------------------|
+| 0.5 m  | 0.64 s          | 0.45 s                |
+| 1.0 m  | 0.90 s          | 0.64 s                |
+| 1.5 m  | 1.11 s          | 0.78 s                |
+| 2.5 m  | 1.43 s          | 1.01 s                |
+
+The `speed` of a landing is the falling speed at impact in m/s. With `EARTH_GRAVITY`, a fall
+from 1 m lands at about 4.4 m/s, from 3 m at 7.7 m/s and from 10 m at 14 m/s. Dividing by
+roughly 12 gives a good volume for landing sounds.
+
+`on_ground` is `true` when the body touched something below it in the last step.
 
 ## Mass, pushing and bouncing
 
-- Dynamic bodies hitting each other exchange momentum like billiard balls. Heavy bodies push
-  light ones further. `with_bounciness(1.0)` makes collisions fully elastic.
-- A kinematic player moved with `move_by` **pushes dynamic bodies** (crates, balls). If the
-  crate is stuck against a wall, the player is blocked (`result.blocked`).
+- Dynamic bodies hitting each other exchange momentum like billiard balls. A heavy body
+  hitting a light one keeps most of its speed and sends the light one flying; a light body
+  bounces off a heavy one.
+- When two dynamic bodies overlap, they are pushed apart in proportion to their masses.
+- A kinematic player moved with `move_by` **pushes dynamic bodies** (crates, balls),
+  regardless of mass. If the crate is stuck against a wall, the player is blocked
+  (`result.blocked`).
 - Dynamic bodies standing on a moving **kinematic** body (a lift, a moving platform, a
   conveyor) are carried along:
 
 ```rust
 let lift = ctx.physics.add(Body::kinematic(vec3(10.0, 0.0, 0.0)).with_box(3.0, 3.0, 0.5));
-ctx.physics.set_velocity(lift, vec3(0.0, 0.0, 2.0));   // goes up, and so does whoever stands on it
+ctx.physics.set_velocity(lift, vec3(0.0, 0.0, 2.0));   // goes up at 2 m/s, and so does whoever stands on it
 ```
 
-## Stepping
+## What happens in one step
 
-The world steps automatically at a fixed rate (`Engine::physics_rate`, 60 Hz by default).
-Your scene's `fixed_update` runs right after each step.
+The world steps automatically at a fixed rate (`Engine::physics_rate`, 60 steps per second
+by default). If a frame takes longer, several steps (at most 8) run in that frame, so the
+simulation speed does not depend on the frame rate. A higher rate is more precise and costs
+more CPU; 60 is plenty for most games. Your scene's `fixed_update` runs right after each
+step, `update` once per frame after all steps.
+
+In each step:
+
+1. Kinematic bodies move by their velocity (without collisions).
+2. Every dynamic body, one after the other:
+   1. is carried along by the kinematic body it stands on,
+   2. gets faster by gravity and forces,
+   3. is slowed down by damping, and by friction if it stands on the ground,
+   4. is limited to `max_speed`,
+   5. moves by its velocity, in small pieces so it does not pass through thin walls, and is
+      pushed out of everything it overlaps. Hitting something removes the speed going into
+      it (or reverses part of it, by bounciness) and creates the events below.
+3. Sensors compare who is inside now with the step before and report `Entered` and `Left`.
 
 ## Events
 
-```rust
-for event in ctx.physics.events() {
-    match event {
-        PhysicsEvent::CollisionStarted { a, b, speed } => {
-            // `a` moved into `b` with `speed` m/s. Good for impact sounds:
-            ctx.audio.sound("thud").volume((speed / 10.0).min(1.0)).at(ctx.physics.position(*a)).play();
-        }
-        PhysicsEvent::CollisionEnded { .. } => {}
-        PhysicsEvent::Landed { body, on, speed } => { /* body touched ground after falling */ }
-        PhysicsEvent::Entered { sensor, body } => { /* body walked into a sensor */ }
-        PhysicsEvent::Left { sensor, body } => {}
-    }
-}
-```
+Events tell you what happened during the physics steps of the **current frame**. They are
+cleared before the next frame's steps, so read them in `update` every frame.
 
-Usually you only care about one body. There are shortcuts for that:
+| Event | When | Fields |
+|-------|------|--------|
+| `CollisionStarted { a, b, speed }` | the dynamic body `a` hit `b` and they were not touching before | `speed`: how fast they came together in m/s |
+| `CollisionEnded { a, b }` | they stopped touching | |
+| `Landed { body, on, speed }` | the dynamic `body` touched ground after being in the air | `speed`: falling speed in m/s |
+| `Entered { sensor, body }` | a solid `body` came into `sensor` | |
+| `Left { sensor, body }` | it went out again | |
+
+`speed` in `CollisionStarted` only counts the part of the movement that goes into the other
+body: running along a wall gives a low speed, running straight into it a high one. It is
+the right value for the volume of impact sounds.
+
+Usually you only care about one body. There are shortcuts that return the first matching
+event of this frame:
 
 ```rust
 if let Some(speed) = ctx.physics.landed(player) { /* ... */ }
@@ -182,9 +392,22 @@ if let Some(zone) = ctx.physics.left(player) { /* ... */ }
 if let Some(who) = ctx.physics.triggered(trap) { /* something entered the trap */ }
 ```
 
-`event.involves(id)` and `event.other(id)` help filter events. If you need to change
-`ctx` (play sounds, remove bodies) while looping, iterate over a copy:
-`for e in ctx.physics.events().to_vec()`.
+To see all events, loop over them:
+
+```rust
+for event in ctx.physics.events().to_vec() {
+    match event {
+        PhysicsEvent::CollisionStarted { a, b, speed } => {
+            ctx.audio.sound("thud").volume((speed / 10.0).min(1.0)).at(ctx.physics.position(a)).play();
+        }
+        PhysicsEvent::Entered { sensor, body } => { /* body walked into a sensor */ }
+        _ => {}
+    }
+}
+```
+
+`.to_vec()` copies the list, so you can change `ctx` (play sounds, remove bodies) inside the
+loop. `event.involves(id)` and `event.other(id)` help filter events.
 
 ## Queries
 
@@ -195,29 +418,44 @@ if let Some(hit) = ctx.physics.raycast(pos, math::forward(yaw), 20.0, Some(playe
     ctx.speech.speak(format!("{what} in {:.0} meters", hit.distance));
 }
 
-ctx.physics.in_radius(pos, 5.0);              // nearby bodies, nearest first
+ctx.physics.in_radius(pos, 5.0);              // bodies whose center is within 5 m, nearest first
 ctx.physics.nearest_with_tag(pos, "enemy");
-ctx.physics.at_point(pos);
+ctx.physics.at_point(pos);                    // bodies whose shape contains the point
 ctx.physics.with_tag("coin").count();
 ctx.physics.overlaps(a, b);
 ctx.physics.sensors_of(player);               // which zones am I in?
+ctx.physics.distance(a, b);                   // meters between the centers
 ```
+
+`raycast(origin, direction, max_distance, ignore)` sends a straight line from `origin` in
+`direction` and returns the first solid body within `max_distance` meters. Pass the caster
+as `ignore`, otherwise the ray hits the player itself. Sensors are never hit. The
+`RayHit` has the `body`, the `point` where the ray hit, the `distance` in meters and the
+`normal`, the direction the hit surface faces (for example `-y` for the south side of a
+wall).
 
 ## Accessing bodies
 
 ```rust
 ctx.physics.position(id);
 ctx.physics.set_position(id, pos);   // teleport
+ctx.physics.velocity(id);
 ctx.physics.get(id);                 // Option<&Body>
-ctx.physics.get_mut(id);             // change anything
-ctx.physics.remove(id);
+ctx.physics.get_mut(id);             // change any setting, e.g. .unwrap().friction = 0.0
+ctx.physics.remove(id);              // attached sounds stop by themselves
 ctx.physics.clear();
 ```
+
+Calls with an id that no longer exists do nothing and return a neutral value (zero
+position, empty tag, `false`).
 
 ## Limits
 
 - Collisions are resolved one body at a time. Big piles of stacked dynamic bodies may jitter.
-- Fast bodies are moved in sub steps so they do not tunnel through thin walls, up to a
-  limit.
-- If you need rotation, joints or many thousands of bodies, use a full physics engine such
-  as rapier together with audio-code.
+- Fast bodies are moved in small pieces so they do not tunnel through thin walls, up to 64
+  pieces per step. Something faster than about 64 times its own radius per step (about
+  1900 m/s for a 0.5 m body) can still pass through.
+- If you need rotation, slopes, joints or many thousands of bodies, use a full physics
+  engine such as rapier together with audio-code.
+
+How it works inside is described in [Architecture](architecture.md#physics-physicsrs).

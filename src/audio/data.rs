@@ -38,6 +38,8 @@ impl SoundData {
     }
 
     /// Generates a sine tone with short fades, handy for prototypes and beeps.
+    /// `frequency` is the pitch in hertz (440 = A, 880 = one octave higher), `seconds` the
+    /// length and `volume` the linear loudness from 0.0 to 1.0.
     pub fn tone(frequency: f32, seconds: f32, volume: f32) -> Self {
         Self::generate(seconds, |t| (t * frequency * std::f32::consts::TAU).sin() * volume)
     }

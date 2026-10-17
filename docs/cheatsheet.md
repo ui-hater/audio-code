@@ -2,6 +2,11 @@
 
 The calls you need most, on one page. Everything is reached through `ctx`.
 
+Units everywhere: times in **seconds**, distances and positions in **meters**, speeds in
+**meters per second**, angles in **compass degrees** (0 = north, 90 = east, positive turns
+right), volumes as a **linear factor** (1.0 = unchanged, 0.5 = half, 0.0 = silent). Axes:
+`+x` east, `+y` north, `+z` up.
+
 ## Starting
 
 ```rust
@@ -34,20 +39,22 @@ Engine::new("My game").gravity(EARTH_GRAVITY).run_with(Level::new)?;   // Level:
 
 | What | Code |
 |------|------|
-| Build walls from a text map | `let level = ctx.physics.build_level(MAP, 2.0);` |
+| Build walls from a text map | `let level = ctx.physics.build_level(MAP, 2.0);` (2 m per character) |
 | Spawn points from the map | `level.point('P')`, `level.points('C')` |
-| Player body | `let p = ctx.physics.add(Body::kinematic(pos).with_sphere(0.4));` |
+| Player body (top down) | `let p = ctx.physics.add(Body::kinematic(pos).with_sphere(0.4));` (radius 0.4 m) |
+| Player body (platformer) | `let p = ctx.physics.add(Body::dynamic(pos).with_box(0.8, 0.8, 1.6));` (width, depth, height in m) |
 | Ears follow the player | `ctx.follow(p)` |
-| Turn | `ctx.physics.turn(p, 45.0)` |
-| Walk forward, hit walls | `if ctx.physics.move_forward(p, 1.0).blocked { ctx.play("wall") }` |
+| Turn | `ctx.physics.turn(p, 45.0)` (degrees, positive = right) |
+| Walk forward, hit walls | `if ctx.physics.move_forward(p, 1.0).blocked { ctx.play("wall") }` (meters) |
 | Where is it? | `ctx.speak(ctx.physics.describe(p, target))` → "3 o'clock, 12 meters" |
 | Something that makes noise | `ctx.loop_on(enemy, "growl")` (follows it, stops when removed) |
 | Trigger zone | `ctx.physics.add(Body::sensor(pos).with_sphere(1.0).with_tag("coin"))` |
 | Walked into a zone | `if let Some(coin) = ctx.physics.entered_tag(p, "coin") { ... }` |
-| Hit something | `if let Some((other, speed)) = ctx.physics.collided(p) { ... }` |
+| Hit something (dynamic body) | `if let Some((other, speed)) = ctx.physics.collided(p) { ... }` (speed in m/s) |
+| Hit something (`move_by`) | `for other in &ctx.physics.move_by(p, delta).hits { ... }` |
 | Gravity | `Engine::new(..).gravity(EARTH_GRAVITY)` |
-| Jump | `ctx.physics.jump(p, 1.5)` |
-| Landed | `if let Some(speed) = ctx.physics.landed(p) { ... }` |
+| Jump (dynamic body) | `ctx.physics.jump(p, 1.5)` (height in meters) |
+| Landed (dynamic body) | `if let Some(speed) = ctx.physics.landed(p) { ... }` (falling speed in m/s) |
 | Remove | `ctx.physics.remove(id)` |
 
 ## Time
@@ -77,8 +84,10 @@ ctx.ui.input("name", "Your name?");           if let Some(name) = ctx.ui.submitt
 ```rust
 let hum = ctx.audio.play_looped("hum");     hum.stop();
 ctx.audio.sound("shot").volume(0.5).random_pitch(0.9, 1.1).at(pos).play();
+//                     half as loud  speed/pitch ±10 %     position in meters
 ctx.audio.play_music("music/theme");
 ctx.audio.register("click", Synth::sine(1500.0).length(0.03).decay(120.0));
+//                                   1500 Hz      30 ms         fades out fast
 ctx.ui.set_sound_data(UiSound::Navigate, Synth::triangle(1800.0).length(0.02).decay(150.0));
 ```
 

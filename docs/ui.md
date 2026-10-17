@@ -25,6 +25,18 @@ ctx.ui.open(
 );
 ```
 
+Every item starts with an **id** and a **label**. The id (`"volume"`) is for your code: it
+is how you recognize the item in events and read its value. The label (`"Volume"`) is what
+the player hears. The other arguments:
+
+| Item | Arguments after id and label |
+|------|------------------------------|
+| `slider` | start value, minimum, maximum, step. `80.0, 0.0, 100.0, 5.0` starts at 80, goes from 0 to 100, and Left/Right change it by 5 (Page Up/Down by 50). The value is spoken as it is, so a range of 0 to 100 reads better than 0.0 to 1.0. |
+| `choice` | the options, then the index of the option selected at the start (`1` = the second one, "Normal") |
+| `checkbox` | whether it starts checked |
+| `text_field` | the start text |
+| `password_field`, `button`, `label` | nothing more |
+
 | Key                 | Action                                                   |
 |---------------------|----------------------------------------------------------|
 | Up / Down / Tab     | previous / next item                                     |

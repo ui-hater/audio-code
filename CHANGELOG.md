@@ -42,3 +42,7 @@ First version.
   previous music comes back when it closes; `Widget::music` for custom widgets,
   `Audio::music_name`
 - Menus no longer say "2 of 5" by default; turn it on with `Menu::positions(true)`
+- Docs explain what the numbers mean: units, defaults and typical values for body settings,
+  sound volume, pitch, distance and rolloff (with tables), synth frequency and decay, menu
+  sliders and choices; the physics guide explains body kinds, which setup to use for top
+  down games and platformers, the ways to move a body and what happens in one step

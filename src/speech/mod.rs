@@ -144,7 +144,8 @@ impl Speech {
         &self.history
     }
 
-    /// Sets the speech rate if the output supports it (0.0 slowest to 1.0 fastest).
+    /// Sets the speech rate if the output supports it, from 0.0 (slowest) to 1.0
+    /// (fastest), passed on to the voice as is.
     /// Screen readers usually ignore this and keep the user's own settings.
     pub fn set_rate(&mut self, rate: f32) {
         self.send(Command::Rate(rate.clamp(0.0, 1.0)));

@@ -312,7 +312,8 @@ impl Audio {
         }
     }
 
-    /// Plays a generated sine beep. Great for prototyping before you have sound files.
+    /// Plays a generated sine beep of `frequency` hertz (e.g. 880.0) for `seconds`. Great
+    /// for prototyping before you have sound files.
     pub fn play_tone(&mut self, frequency: f32, seconds: f32) -> Sound {
         let name = format!("tone:{frequency}:{seconds}");
         if !self.cache.contains_key(&name) {
@@ -434,18 +435,22 @@ impl Audio {
         self.listener.1
     }
 
-    /// Default audible range for positioned sounds: full volume up to `min`, silent at `max`.
+    /// Default audible range for positioned sounds in meters: full volume up to `min`,
+    /// silent from `max` on. The default is 1.0 and 30.0.
     pub fn set_default_distance(&mut self, min: f32, max: f32) {
         self.default_distance = (min, max);
     }
 
-    /// Default rolloff for positioned sounds. 1.0 is physically accurate (falls off fast),
-    /// lower values keep distant sounds louder. Default is 0.7.
+    /// Default rolloff for positioned sounds: how fast the volume drops between `min` and
+    /// `max` distance. 1.0 is physically accurate (twice the distance, half the volume),
+    /// lower values keep distant sounds louder, 0.0 keeps full volume until shortly before
+    /// `max`. Default is 0.7, which is at 32 % volume at 5 m and 18 % at 10 m.
     pub fn set_default_rolloff(&mut self, rolloff: f32) {
         self.default_rolloff = rolloff.max(0.0);
     }
 
-    /// Sets the overall volume (0.0 to 1.0, higher values amplify).
+    /// Sets the overall volume as a linear factor: 1.0 = unchanged (default), 0.5 = half,
+    /// 0.0 = silent. Higher values amplify and may distort.
     pub fn set_master_volume(&mut self, volume: f32) {
         self.master = volume.max(0.0);
         let _ = self.tx.send(Command::MasterVolume(self.master));
@@ -456,7 +461,9 @@ impl Audio {
         self.master
     }
 
-    /// Sets the volume of one group (sound effects, music or UI).
+    /// Sets the volume of one group (sound effects, music or UI) as a linear factor,
+    /// 1.0 = unchanged (default). It is multiplied with each sound's own volume and the
+    /// master volume.
     pub fn set_group_volume(&mut self, group: Group, volume: f32) {
         self.groups.insert(group, volume.max(0.0));
         let _ = self.tx.send(Command::GroupVolume(group, volume));
@@ -484,7 +491,7 @@ impl Audio {
         let _ = self.tx.send(Command::StopAll { group: None, fade: 0.0 });
     }
 
-    /// Fades out all sounds of a group.
+    /// Fades out all sounds of a group over `fade` seconds and stops them.
     pub fn stop_group(&mut self, group: Group, fade: f32) {
         if group == Group::Music {
             self.music = None;
@@ -573,31 +580,35 @@ impl<'a> SoundBuilder<'a> {
         Self { audio, name: name.to_string(), settings }
     }
 
-    /// Volume factor, 1.0 = original.
+    /// Linear volume factor: 1.0 = as recorded (default), 0.5 = half (about -6 dB),
+    /// 0.0 = silent. Values above 1.0 amplify and may distort.
     pub fn volume(mut self, volume: f32) -> Self {
         self.settings.volume = volume;
         self
     }
 
-    /// Volume in decibels, 0 = original, -6 = about half.
+    /// Volume in decibels: 0 = original, -6 = about half, -20 = a tenth, +6 = about double.
     pub fn volume_db(mut self, db: f32) -> Self {
         self.settings.volume = crate::math::db_to_linear(db);
         self
     }
 
-    /// Playback speed and pitch, 1.0 = original, 2.0 = one octave up.
+    /// Playback speed, which changes pitch and length together: 1.0 = original (default),
+    /// 2.0 = one octave up and twice as fast, 0.5 = one octave down and twice as long.
     pub fn pitch(mut self, pitch: f32) -> Self {
         self.settings.pitch = pitch;
         self
     }
 
     /// Random pitch between `min` and `max` – makes repeated sounds less monotonous.
+    /// `0.9, 1.1` is a good range for footsteps and hits.
     pub fn random_pitch(mut self, min: f32, max: f32) -> Self {
         self.settings.pitch = crate::math::random::range(min, max);
         self
     }
 
-    /// Stereo position for non-positioned sounds: -1.0 left, 0.0 center, 1.0 right.
+    /// Stereo position for non-positioned sounds: -1.0 left, 0.0 center (default), 1.0
+    /// right. Ignored once the sound has a position ([`SoundBuilder::at`]).
     pub fn pan(mut self, pan: f32) -> Self {
         self.settings.pan = pan;
         self
@@ -615,7 +626,8 @@ impl<'a> SoundBuilder<'a> {
         self
     }
 
-    /// Audible range: full volume up to `min` meters, silent from `max` meters.
+    /// Audible range: full volume up to `min` meters, silent from `max` meters. Default
+    /// 1.0 and 30.0 (see [`Audio::set_default_distance`]).
     pub fn distance(mut self, min: f32, max: f32) -> Self {
         self.settings.distance = (min, max);
         self
@@ -633,7 +645,7 @@ impl<'a> SoundBuilder<'a> {
         self
     }
 
-    /// Fade in over the given seconds.
+    /// Fades in from silence to the volume over the given seconds.
     pub fn fade_in(mut self, seconds: f32) -> Self {
         self.settings.fade_in = seconds;
         self
@@ -716,22 +728,24 @@ impl Sound {
         self.send(Change::Stop { fade: 0.0 });
     }
 
-    /// Fades to silence over `seconds`, then stops.
+    /// Fades to silence over `seconds`, then stops. Good for ending loops without a click.
     pub fn fade_out(&self, seconds: f32) {
         self.send(Change::Stop { fade: seconds });
     }
 
-    /// Sets the volume immediately.
+    /// Sets the linear volume immediately (1.0 = original, 0.0 = silent).
     pub fn set_volume(&self, volume: f32) {
         self.send(Change::Volume { target: volume, fade: 0.0 });
     }
 
-    /// Fades the volume to `volume` over `seconds`.
+    /// Fades the linear volume to `volume` over `seconds`. The sound keeps playing, also
+    /// at 0.0.
     pub fn fade_to(&self, volume: f32, seconds: f32) {
         self.send(Change::Volume { target: volume, fade: seconds });
     }
 
-    /// Sets playback speed and pitch (1.0 = original).
+    /// Sets playback speed and pitch (1.0 = original, 2.0 = one octave up and twice as
+    /// fast). Can be changed every frame, e.g. for an engine sound.
     pub fn set_pitch(&self, pitch: f32) {
         self.send(Change::Pitch(pitch));
     }

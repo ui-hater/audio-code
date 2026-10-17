@@ -31,6 +31,55 @@ ctx.audio
 
 Other builder options: `.looped()`, `.pan(-1.0..=1.0)`, `.group(Group::Ui)`, `.paused()`.
 
+## What the numbers mean
+
+All times are in **seconds** and all positions and distances in **meters** (the same units
+as [physics](physics.md#units-and-directions)).
+
+| Setting | Default | Meaning | Examples |
+|---------|---------|---------|----------|
+| `volume(v)` | `1.0` | Linear volume factor. `1.0` is the file as recorded, `0.5` half the amplitude (about 6 dB quieter, clearly softer), `0.0` silent. Values above `1.0` amplify and may distort. | background hum 0.2–0.4, footsteps 0.5–0.8 |
+| `volume_db(db)` | `0.0` | The same in decibels. `0` = original, `-6` = about half, `-20` = a tenth, `+6` = about double. | `-3.0` slightly softer |
+| `pitch(p)` | `1.0` | Playback speed. It changes pitch and length together: `2.0` is one octave higher and twice as fast, `0.5` one octave lower and twice as long. | engine sound 0.8–2.0 depending on speed |
+| `random_pitch(min, max)` | – | Picks a pitch between `min` and `max` each time. Small ranges keep repeated sounds from sounding mechanical. | footsteps `0.9, 1.1` |
+| `pan(p)` | `0.0` | Left/right position for sounds **without** a position: `-1.0` fully left, `0.0` center, `1.0` fully right. Ignored for positioned sounds. | `-0.5` a bit left |
+| `at(pos)` | none | Puts the sound in the world. It is then panned and attenuated relative to the listener. | |
+| `distance(min, max)` | `1.0, 30.0` | Audible range in meters: full volume up to `min`, silent from `max` on. | small objects `0.5, 15.0`, an alarm `3.0, 100.0` |
+| `rolloff(r)` | `0.7` | How fast the volume drops between `min` and `max`, see the table below. | |
+| `fade_in(s)` | `0.0` | Fades from silence to the volume over `s` seconds. | |
+| `start_at(s)` | `0.0` | Skips the first `s` seconds of the file. | |
+
+### Distance and rolloff
+
+The volume of a positioned sound depends on its distance from the listener. Within `min`
+it plays at full volume. From there it gets quieter, and at `max` it is silent. `rolloff`
+sets the shape of the curve: `1.0` behaves like real sound (twice the distance, half the
+volume), lower values keep far sounds louder, and `0.0` keeps the full volume and only
+fades out near `max`. Values above `1.0` drop off even faster.
+
+Volume (as a factor) with the default `distance(1.0, 30.0)`:
+
+| Distance | rolloff 0.0 | rolloff 0.5 | rolloff 0.7 (default) | rolloff 1.0 |
+|----------|-------------|-------------|-----------------------|-------------|
+| 1 m      | 1.00        | 1.00        | 1.00                  | 1.00        |
+| 2 m      | 1.00        | 0.71        | 0.61                  | 0.50        |
+| 5 m      | 0.98        | 0.44        | 0.32                  | 0.20        |
+| 10 m     | 0.90        | 0.29        | 0.18                  | 0.09        |
+| 20 m     | 0.57        | 0.13        | 0.07                  | 0.03        |
+| 30 m     | 0           | 0           | 0                     | 0           |
+
+Rules of thumb:
+
+- Make `max` as large as the distance from which the player should still hear the thing.
+  Everything beyond `max` is silent, even a loud explosion.
+- Raise `min` for big or loud sources (a waterfall, a machine hall) so they stay at full
+  volume in a wider area.
+- Lower `rolloff` (0.3–0.5) for important sounds the player navigates by, such as beacons
+  and enemies, so they stay audible from far away.
+
+Sounds **behind** the listener are up to 30 % quieter and muffled, so you can tell front
+from back.
+
 ## Controlling a playing sound
 
 Every play call returns a [`Sound`] handle. It is cheap to clone, and dropping it does
@@ -215,20 +264,43 @@ ctx.audio.register("thump", Synth::sine(150.0).sweep_to(50.0).length(0.15).decay
 ctx.audio.register("alarm", Synth::square(800.0).length(0.1).then(Synth::silence(0.1)).then(Synth::square(800.0).length(0.1)));
 ```
 
-| Method | Meaning |
-|--------|---------|
-| `Synth::sine/square/triangle/saw(hz)`, `Synth::noise()`, `Synth::silence(s)` | wave shape |
-| `.length(seconds)` | duration (default 0.1) |
-| `.sweep_to(hz)` | glide the pitch |
-| `.attack(seconds)` | fade in (default 2 ms) |
-| `.decay(rate)` | exponential fade out: 20 slow, 100+ a short click |
-| `.release(seconds)` | linear fade at the end (default 5 ms) |
-| `.volume(v)` | loudness (default 0.5) |
-| `.then(other)` | play `other` afterwards |
-| `.with(other)` | play `other` at the same time |
+| Method | Default | Meaning |
+|--------|---------|---------|
+| `Synth::sine(hz)` | – | pure, soft tone; good for beeps and clicks |
+| `Synth::triangle(hz)` | – | a bit brighter than sine, still soft; good for pickups and menus |
+| `Synth::square(hz)` | – | hollow, retro game sound, quite loud |
+| `Synth::saw(hz)` | – | buzzy and bright; engines, alarms |
+| `Synth::noise()` | – | hiss; footsteps, wind, explosions, hits |
+| `Synth::silence(seconds)` | – | a pause, for use with `then` |
+| `.length(seconds)` | `0.1` | total duration |
+| `.sweep_to(hz)` | – | glides the pitch from the start frequency to `hz` over the whole length |
+| `.attack(seconds)` | `0.002` | fade in at the start; longer values make a soft start |
+| `.decay(rate)` | `0.0` (none) | exponential fade out, see below |
+| `.release(seconds)` | `0.005` | short linear fade at the very end, so the sound does not stop with a click |
+| `.volume(v)` | `0.5` | linear loudness, `1.0` is full scale |
+| `.then(other)` | – | plays `other` afterwards |
+| `.with(other)` | – | plays `other` at the same time (layers) |
 
 Settings apply to the part they are called on; parts added with `then` and `with` keep
 their own settings.
+
+**Frequency** (`hz`) is the pitch in hertz, vibrations per second. 440 is the A above
+middle C, doubling the number goes one octave up. 50–150 Hz is a deep thump or rumble,
+200–600 a voice-like range, 800–2000 clear beeps and clicks, above 3000 sharp and piercing.
+Some notes: C5 523, E5 659, G5 784, A5 880, B5 988, C6 1047, E6 1319.
+
+**Decay** is how fast the sound fades out after the start: the volume is multiplied by
+`e^(-rate * time)`. A higher rate fades faster:
+
+| Rate | Half as loud after | Inaudible (−60 dB) after | Sounds like |
+|------|--------------------|--------------------------|-------------|
+| 10   | 70 ms              | 0.7 s                    | a ringing bell |
+| 30   | 23 ms              | 0.23 s                   | a pluck, a drop |
+| 60   | 12 ms              | 0.12 s                   | a knock |
+| 120  | 6 ms               | 0.06 s                   | a click |
+| 300  | 2 ms               | 0.02 s                   | a tick |
+
+If the decay already makes the sound inaudible, a longer `length` only adds silence.
 
 ## Generated sounds from formulas
 

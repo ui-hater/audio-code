@@ -111,7 +111,7 @@ impl Synth {
         self
     }
 
-    /// Glide the frequency linearly to `frequency` over the length.
+    /// Glide the frequency linearly to `frequency` (in hertz) over the whole length.
     pub fn sweep_to(mut self, frequency: f32) -> Self {
         self.to = frequency;
         self
@@ -123,7 +123,9 @@ impl Synth {
         self
     }
 
-    /// Exponential fade out speed. 0 = none, 20 = slow, 100+ = a short click.
+    /// Exponential fade out speed: the volume is multiplied by `e^(-rate * seconds)`.
+    /// 0 = none (default), 10 rings for about 0.7 s, 30 is a pluck (0.2 s), 120 a click
+    /// (60 ms), 300 a tick (20 ms).
     pub fn decay(mut self, rate: f32) -> Self {
         self.decay = rate.max(0.0);
         self
@@ -135,7 +137,7 @@ impl Synth {
         self
     }
 
-    /// Loudness, 0.0 to 1.0 (default 0.5).
+    /// Linear loudness, 0.0 (silent) to 1.0 (full scale), default 0.5.
     pub fn volume(mut self, volume: f32) -> Self {
         self.volume = volume;
         self

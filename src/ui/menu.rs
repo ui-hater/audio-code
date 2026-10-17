@@ -165,13 +165,17 @@ impl Menu {
         self.push(id, label, ItemKind::Checkbox(checked))
     }
 
-    /// Adds a slider from `min` to `max`, changing by `step` per key press.
+    /// Adds a slider. `value` is the start value, `min` and `max` the range, and `step`
+    /// how much Left and Right change it (Page Up and Page Down change it by ten steps).
+    /// `slider("volume", "Volume", 80.0, 0.0, 100.0, 5.0)` starts at 80 and goes from 0 to
+    /// 100 in steps of 5. Read the value with `Value::as_f32`.
     pub fn slider(self, id: impl Into<String>, label: impl Into<String>, value: f32, min: f32, max: f32, step: f32) -> Self {
         let value = value.clamp(min, max);
         self.push(id, label, ItemKind::Slider { value, min, max, step: step.abs().max(f32::EPSILON) })
     }
 
-    /// Adds a choice between several options.
+    /// Adds a choice between several options. `selected` is the index of the option chosen
+    /// at the start (0 = the first one).
     pub fn choice(self, id: impl Into<String>, label: impl Into<String>, options: &[&str], selected: usize) -> Self {
         let options: Vec<String> = options.iter().map(|s| s.to_string()).collect();
         let selected = selected.min(options.len().saturating_sub(1));
