@@ -210,6 +210,13 @@ of names exist:
   outside of updates.
 - anything else: a normal file or registered sound
 
+**Music.** At the start of every `ui.update`, `update_music` looks for the topmost widget
+whose `Widget::music` returns a name. If that name differs from the widget music `Ui`
+started last, it calls `Audio::play_music` (which cross fades). Before the first widget
+music starts, the current `Audio::music_name` is saved in `previous_music`. When no widget
+wants music any more, that track is played again, or the music fades out, but only if the
+widget music is still the current track; music the game started meanwhile is kept.
+
 `Wrap` falls back to `Navigate` when unset. Menus can override single slots
 (`Menu::sound`) or replace the whole set (`Menu::sounds`).
 

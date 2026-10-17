@@ -183,6 +183,12 @@ pub trait Widget: 'static {
         let _ = item;
         None
     }
+
+    /// Music that plays while this widget is open, see [`Menu::music`].
+    /// Widgets above it without music of their own keep it playing.
+    fn music(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Everything a widget may use while it updates.
@@ -243,6 +249,10 @@ pub struct Ui {
     sounds: UiSounds,
     /// Sounds made with `set_sound_data`, registered with the audio system on the next update.
     pending_sounds: Vec<(String, SoundData)>,
+    /// Widget music that the UI started and that is playing now.
+    music: Option<String>,
+    /// Music that played before the widget music, restored when no widget wants music.
+    previous_music: Option<String>,
 }
 
 impl std::fmt::Debug for Ui {
@@ -261,6 +271,7 @@ impl Ui {
         for (name, data) in self.pending_sounds.drain(..) {
             audio.register(name, data);
         }
+        self.update_music(audio);
         let Some(top) = self.stack.last_mut() else {
             return false;
         };
@@ -283,6 +294,37 @@ impl Ui {
             Status::Push(widget) => self.stack.push(Entry { widget, state: State::Fresh }),
         }
         true
+    }
+
+    /// Plays the music of the topmost widget that has some. When no widget wants music any
+    /// more, the music from before comes back, unless the game started other music meanwhile.
+    fn update_music(&mut self, audio: &mut Audio) {
+        let wanted = self.stack.iter().rev().find_map(|e| e.widget.music());
+        if wanted == self.music.as_deref() {
+            return;
+        }
+        match wanted {
+            Some(name) => {
+                if self.music.is_none() {
+                    self.previous_music = audio.music_name().map(String::from);
+                }
+                audio.play_music(name);
+                self.music = Some(name.to_string());
+            }
+            None => {
+                let ours = audio.music_name().is_some() && audio.music_name() == self.music.as_deref();
+                let previous = self.previous_music.take();
+                self.music = None;
+                if ours {
+                    match previous {
+                        Some(name) => {
+                            audio.play_music(&name);
+                        }
+                        None => audio.stop_music(1.0),
+                    }
+                }
+            }
+        }
     }
 
     fn pop(&mut self, value: Option<Value>) {
@@ -488,9 +530,9 @@ mod tests {
         let mut h = Harness::new();
         h.ui.open(Menu::new("main", "Main menu").button("play", "Play").button("quit", "Quit"));
         h.frame(&[], "");
-        assert_eq!(h.speech.last(), Some("Main menu. Play, 1 of 2"));
+        assert_eq!(h.speech.last(), Some("Main menu. Play"));
         h.frame(&[Key::Down], "");
-        assert_eq!(h.speech.last(), Some("Quit, 2 of 2"));
+        assert_eq!(h.speech.last(), Some("Quit"));
         h.frame(&[Key::Enter], "");
         assert!(h.ui.clicked("main", "quit"));
         h.frame(&[Key::Escape], "");
@@ -512,7 +554,7 @@ mod tests {
         assert_eq!(h.ui.changed("opts", "vol"), Some(&Value::Number(60.0)));
         assert_eq!(h.ui.value("opts", "vol"), Some(Value::Number(60.0)));
         h.frame(&[], "b");
-        assert_eq!(h.speech.last(), Some("Back, 3 of 3"));
+        assert_eq!(h.speech.last(), Some("Back"));
         h.frame(&[], "m");
         h.frame(&[Key::Space], "");
         assert_eq!(h.ui.changed("opts", "music"), Some(&Value::Bool(true)));
@@ -530,7 +572,7 @@ mod tests {
         h.frame(&[Key::Enter], "");
         h.frame(&[], ""); // menu resumes
         assert_eq!(h.ui.value("m", "name"), Some(Value::Text("Bo".into())));
-        assert_eq!(h.speech.last(), Some("Name, edit, Bo, 1 of 1"));
+        assert_eq!(h.speech.last(), Some("Name, edit, Bo"));
     }
 
     #[test]
@@ -546,6 +588,46 @@ mod tests {
         assert!(h.audio.is_loaded("ui:custom:navigate"));
         let only_nav = UiSounds::none().with(UiSound::Navigate, "x");
         assert_eq!(only_nav.get(UiSound::Wrap), Some("x"));
+    }
+
+    #[test]
+    fn positions_on_request() {
+        let mut h = Harness::new();
+        h.ui.open(Menu::new("m", "").button("a", "A").button("b", "B").positions(true));
+        h.frame(&[], "");
+        assert_eq!(h.speech.last(), Some("A, 1 of 2"));
+    }
+
+    #[test]
+    fn menu_music() {
+        let mut h = Harness::new();
+        let tone = crate::audio::Synth::sine(440.0).length(0.5);
+        for name in ["level", "theme", "options"] {
+            h.audio.register(name, tone.clone());
+        }
+        h.audio.play_music("level");
+        h.ui.open(Menu::new("pause", "Paused").button("opts", "Options").music("theme"));
+        h.frame(&[], "");
+        assert_eq!(h.audio.music_name(), Some("theme"));
+        h.ui.open(Menu::new("sub", "").button("x", "X"));
+        h.frame(&[], "");
+        assert_eq!(h.audio.music_name(), Some("theme"), "submenu without music keeps it");
+        h.ui.open(Menu::new("opts", "").button("x", "X").music("options"));
+        h.frame(&[], "");
+        assert_eq!(h.audio.music_name(), Some("options"));
+        h.ui.close();
+        h.frame(&[], "");
+        assert_eq!(h.audio.music_name(), Some("theme"));
+        h.ui.close_all();
+        h.frame(&[], "");
+        assert_eq!(h.audio.music_name(), Some("level"), "music from before comes back");
+
+        h.ui.open(Menu::new("main", "").button("play", "Play").music("theme"));
+        h.frame(&[], "");
+        h.audio.play_music("options"); // the game starts its own music
+        h.ui.close_all();
+        h.frame(&[], "");
+        assert_eq!(h.audio.music_name(), Some("options"), "game music is left alone");
     }
 
     #[test]

@@ -113,6 +113,45 @@ if ctx.input.repeating(Key::Up, 0.4, 0.25) {
 }
 ```
 
+With `repeating(Key::Up, 0.4, 0.25)` and the key held for one second, it returns `true` in
+these frames:
+
+```text
+held for:  0.0s   0.4s   0.65s   0.9s   (1.15s, 1.4s, ... while still held)
+           press  delay  +every  +every
+```
+
+How it works:
+
+- In the frame the key goes down it returns `true`, exactly like `pressed`.
+- Every frame the engine measures how long the key has been held, in this frame and in the
+  previous one. `repeating` returns `true` when a repeat point (`delay`, `delay + every`,
+  `delay + 2 * every`, ...) lies between those two times. So it is `true` in **one** frame per
+  repeat point, not in every frame after it.
+- If a single frame is so long that it skips several repeat points, you still get only one
+  `true` for that frame. The player never jumps several steps at once.
+- When the key is released, it returns `false`, and the timing starts again at the next
+  press.
+- It uses real time, not game time: `time_scale` and pausing do not change the repeat speed.
+- It keeps no state of its own, so you can call it as often as you like and use different
+  timings for different keys. Call it every frame while you want the key to work, otherwise
+  you miss the frames in which it is `true`.
+- Like the other queries, it returns `false` while a UI widget is open.
+
+Choosing the numbers:
+
+- `delay` is the pause after the first step, before the key starts repeating. It stops a
+  short tap from turning into two steps. 0.3–0.5 seconds works well.
+- `every` is the time between steps while the key is held, so it sets the walking speed:
+  0.25 is four steps per second. Values below 0.001 are treated as 0.001.
+- Use the same number for both (`repeating(key, 0.3, 0.3)`) for an even rhythm, which
+  usually sounds best with footsteps.
+- Change the numbers at runtime to make a player run, for example `0.15` while Shift is
+  held.
+
+Compared to `pressed_or_repeated`, which follows the operating system's key repeat,
+`repeating` gives every player the same speed, no matter how their keyboard is set up.
+
 ### Keys
 
 `Key` covers letters (`Key::A`), digits (`Key::Digit1`), `F1`–`F12`, arrows, `Enter`,

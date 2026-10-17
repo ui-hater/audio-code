@@ -410,6 +410,11 @@ impl Audio {
         self.music.as_ref()
     }
 
+    /// Name of the current music, as passed to [`Audio::play_music`].
+    pub fn music_name(&self) -> Option<&str> {
+        self.music_name.as_deref()
+    }
+
     // ----------------------------------------------------------------- listener & volume
 
     /// Places the listener (the player's ears) in the world. `yaw` is the compass direction

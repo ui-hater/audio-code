@@ -65,6 +65,7 @@ Engine::new("My game").gravity(EARTH_GRAVITY).run_with(Level::new)?;   // Level:
 ```rust
 ctx.ui.open(Menu::new("main", "Main menu").button("play", "Play").button("quit", "Quit"));
 if ctx.ui.clicked("main", "play") { ctx.ui.close(); }
+Menu::new("main", "Main menu").music("music/menu")   // loops while the menu is open
 
 ctx.ui.message("intro", "Welcome!");          if ctx.ui.closed("intro") { ... }
 ctx.ui.confirm("quit", "Really quit?");       if ctx.ui.confirmed("quit") == Some(true) { ... }

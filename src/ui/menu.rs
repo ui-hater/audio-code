@@ -107,7 +107,8 @@ impl MenuItem {
 ///     .choice("difficulty", "Difficulty", &["Easy", "Normal", "Hard"], 1)
 ///     .checkbox("subtitles", "Speak hints", true)
 ///     .text_field("name", "Player name", "Hero")
-///     .button("back", "Back");
+///     .button("back", "Back")
+///     .music("menu_theme");
 /// ```
 #[derive(Debug, Clone)]
 pub struct Menu {
@@ -121,6 +122,7 @@ pub struct Menu {
     close_on_activate: bool,
     sounds: Option<UiSounds>,
     sound_overrides: Vec<(UiSound, Option<String>)>,
+    music: Option<String>,
     editing: Option<usize>,
 }
 
@@ -134,10 +136,11 @@ impl Menu {
             index: 0,
             wrap: false,
             closable: true,
-            positions: true,
+            positions: false,
             close_on_activate: false,
             sounds: None,
             sound_overrides: Vec::new(),
+            music: None,
             editing: None,
         }
     }
@@ -203,7 +206,7 @@ impl Menu {
         self
     }
 
-    /// Speak "2 of 5" after each item (default `true`).
+    /// Speak "2 of 5" after each item (default `false`).
     pub fn positions(mut self, positions: bool) -> Self {
         self.positions = positions;
         self
@@ -225,6 +228,14 @@ impl Menu {
     /// `None` makes it silent. All other sounds stay as they are.
     pub fn sound(mut self, kind: UiSound, name: Option<&str>) -> Self {
         self.sound_overrides.push((kind, name.map(String::from)));
+        self
+    }
+
+    /// Plays the music `name` in a loop while this menu is open (a file or registered sound).
+    /// Submenus and dialogs on top keep it playing unless they have music of their own.
+    /// When the menu closes, the music that played before comes back, or the music fades out.
+    pub fn music(mut self, name: impl Into<String>) -> Self {
+        self.music = Some(name.into());
         self
     }
 
@@ -472,5 +483,9 @@ impl Widget for Menu {
 
     fn value(&self, item: &str) -> Option<Value> {
         self.items.iter().find(|i| i.id == item).and_then(MenuItem::value)
+    }
+
+    fn music(&self) -> Option<&str> {
+        self.music.as_deref()
     }
 }

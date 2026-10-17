@@ -38,3 +38,7 @@ First version.
 - Detailed README with an explained example game, and `docs/architecture.md` explaining
   the internals; README code blocks are compiled as doc tests
 - Synthetic key presses on window focus are ignored
+- Menu music: `Menu::music` loops a track while the menu is open, submenus keep it, and the
+  previous music comes back when it closes; `Widget::music` for custom widgets,
+  `Audio::music_name`
+- Menus no longer say "2 of 5" by default; turn it on with `Menu::positions(true)`

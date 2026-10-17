@@ -61,15 +61,63 @@ The listener is the player's ears. Update it whenever the player moves or turns:
 ctx.audio.set_listener(player_pos, facing);
 ```
 
-`facing` is a compass angle: 0 = north (+y), 90 = east (+x). See the
-[coordinate system](../src/math.rs).
+### How `set_listener` works
+
+`set_listener(position, yaw)` takes two things:
+
+- `position`: where the ears are, as a `Vec3` in world units (z is up, +y is north,
+  +x is east).
+- `yaw`: the compass direction the player faces, in degrees: 0 = north (+y), 90 = east
+  (+x), 180 = south, 270 = west. Values outside 0–360 are fine.
+
+The listener starts at the origin facing north. It keeps its position and facing until you
+call `set_listener` again. Sounds do not follow it by themselves. Call it every time the
+player moves or turns, usually once at the end of `update`. Calling it every frame is cheap.
+
+The call stores the values on the game side, so `ctx.audio.listener_position()` and
+`ctx.audio.listener_yaw()` return them right away. It also sends them to the audio thread,
+which uses them from the next audio block on (a few milliseconds later). Every positioned
+sound that is playing is then recalculated, including looping sounds that started long ago.
+
+Only positioned sounds are affected: those started with `play_at`, `play_looped_at`,
+`.at(pos)` on the builder, or `loop_on` / `play_on`. Plain `play` sounds, UI sounds and
+music always sound the same, no matter where the listener is.
 
 For each positioned sound the engine:
 
-- pans it left or right by its direction from the listener
-- lowers the volume with distance (`distance(min, max)` and `rolloff`)
+- turns the offset from the listener to the sound into the listener's own view, using
+  `yaw`: how far it is to the right and how far ahead
+- pans it left or right by that direction: a sound straight to the right is almost fully
+  in the right ear, a sound straight ahead or behind is centered
+- lowers the volume with distance: full volume up to `min`, silent at `max`
+  (`distance(min, max)` and `rolloff`). Height counts for the distance but not for the
+  panning
 - muffles it and lowers the volume a little when it is **behind** the listener, so you can
   tell front from back on headphones
+
+So turning matters as much as moving. In this example the same sound first comes from the
+right, then from straight ahead:
+
+```rust
+let bell = vec3(10.0, 0.0, 0.0);           // 10 units east of the origin
+ctx.audio.play_looped_at("bell", bell);
+
+ctx.audio.set_listener(Vec3::ZERO, 0.0);   // facing north: the bell is on the right
+ctx.audio.set_listener(Vec3::ZERO, 90.0);  // facing east: the bell is in front
+ctx.audio.set_listener(Vec3::ZERO, 270.0); // facing west: the bell is behind, muffled
+```
+
+A side scroller, where the player only moves left and right and always faces north, keeps
+`yaw` at 0. Sounds to the east are then on the right:
+
+```rust
+ctx.audio.set_listener(vec3(self.x, 0.0, 0.0), 0.0);
+```
+
+If the player is a physics body, you do not need `set_listener` at all. `ctx.follow(body)`
+sets the listener to the body's position and `facing` after every frame (see
+[Sounds that follow objects](#sounds-that-follow-objects)). Do not mix both: while a body is
+followed, the engine overwrites your own `set_listener` calls at the end of the frame.
 
 Defaults for all sounds can be set once:
 
@@ -104,7 +152,8 @@ ctx.audio.stop_music(2.0);
 
 Music files are decoded on a background thread, so starting a long track never causes a
 stutter. Calling `play_music` with the track that is already playing does nothing, so you
-can call it every frame without problems.
+can call it every frame without problems. `ctx.audio.music_name()` returns the name of the
+current track. Menus can bring their own music with `Menu::music` (see [UI](ui.md#menu-music)).
 
 ## Volume groups
 

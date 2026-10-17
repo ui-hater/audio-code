@@ -41,13 +41,31 @@ Options:
 Menu::new("main", "Main menu")
     .wrap(true)               // jump from last to first item
     .closable(false)          // Escape does nothing (good for main menus)
-    .positions(false)         // do not say "2 of 5"
+    .positions(true)          // also say "2 of 5" (off by default)
     .close_on_activate(true)  // close after a button is pressed
     .focus("continue")        // start on this item
     .sounds(UiSounds::from_folder("ui/fantasy"));
 ```
 
-The announcement sounds like `Options. Volume, 80, 1 of 7`.
+The announcement sounds like `Options. Volume, 80`, or `Options. Volume, 80, 1 of 7` with
+`.positions(true)`.
+
+### Menu music
+
+```rust
+Menu::new("main", "Main menu")
+    .button("play", "Play")
+    .music("music/menu")   // loops while the menu is open
+```
+
+The music starts with a cross fade when the menu opens. Submenus and dialogs on top keep it
+playing, unless they set `.music(..)` themselves; then their music plays until they close.
+When the last menu with music closes, the music that played before (for example the level
+music under a pause menu) comes back from the start, or the music fades out if there was
+none. If the game starts its own music while the menu is open, for example
+`ctx.audio.play_music("level1")` when "Play" is pressed, that music is left alone.
+
+Custom widgets can have music too by implementing `Widget::music`.
 
 ## Reacting to the UI
 
