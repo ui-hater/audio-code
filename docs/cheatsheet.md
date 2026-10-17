@@ -122,6 +122,10 @@ ctx.storage.set("best", 42);          // written automatically when the game qui
 ctx.storage.add("games_played", 1);
 ```
 
+Encrypt the save file (optional): `Engine::new("My game").encrypt_save("secret word")`. If
+it cannot be read, `ctx.storage.load_error()` says why and the file is kept as
+`<file>.broken`.
+
 ## Sharing data between scenes
 
 ```rust

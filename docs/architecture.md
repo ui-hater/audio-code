@@ -339,6 +339,16 @@ Backslash, newline and carriage return in values are escaped. Values are convert
 flag avoids writing when nothing changed. Headless runners use in-memory storage, so tests
 never write files.
 
+**Encryption** (optional, `open_encrypted` / `Engine::encrypt_save`): the key is
+`SHA-256("audio-code save key v1\0" + secret)`. An encrypted file is
+`"AUDIOCODE-SAVE-ENC1\n"`, a random 24 byte nonce (`getrandom`), and the XChaCha20-Poly1305
+ciphertext of the same `key = value` text with its 16 byte tag; the magic header is the
+associated data. Every save uses a new nonce. Loading picks the format from the header, so
+plain files still load (and are marked dirty to be rewritten encrypted). A file that fails
+to decrypt or is not text is renamed to `<file>.broken` before anything can overwrite it;
+if the rename fails, saving is disabled. The reason is kept in `load_error`. `Debug` never
+prints the key.
+
 ## Design decisions
 
 - **Own mixer instead of an audio library.** Full control over 3D panning, the behind-the-

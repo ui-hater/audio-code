@@ -195,6 +195,7 @@ pub struct Engine {
     pub(crate) nvda_dll: Option<PathBuf>,
     pub(crate) gravity: glam::Vec3,
     pub(crate) save_file: Option<PathBuf>,
+    pub(crate) save_secret: Option<String>,
 }
 
 impl Engine {
@@ -212,6 +213,7 @@ impl Engine {
             nvda_dll: None,
             gravity: glam::Vec3::ZERO,
             save_file: None,
+            save_secret: None,
         }
     }
 
@@ -237,6 +239,15 @@ impl Engine {
     /// File used by [`Context::storage`] (default `<title>.save` in the working directory).
     pub fn save_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.save_file = Some(path.into());
+        self
+    }
+
+    /// Encrypts the save file of [`Context::storage`] with a key made from `secret`
+    /// (optional, default off). Players can no longer read or edit it, and a changed or
+    /// damaged file is detected and kept as `<file>.broken`. An existing plain text save is
+    /// converted on the next save. See [`crate::storage`] for what this protects against.
+    pub fn encrypt_save(mut self, secret: impl Into<String>) -> Self {
+        self.save_secret = Some(secret.into());
         self
     }
 
@@ -433,7 +444,11 @@ impl Runner {
             storage: if config.headless {
                 Storage::in_memory()
             } else {
-                Storage::open(config.save_file.clone().unwrap_or_else(|| crate::storage::default_file(&config.title)))
+                let file = config.save_file.clone().unwrap_or_else(|| crate::storage::default_file(&config.title));
+                match &config.save_secret {
+                    Some(secret) => Storage::open_encrypted(file, secret),
+                    None => Storage::open(file),
+                }
             },
             follow: None,
             attached: Vec::new(),

@@ -21,7 +21,7 @@ make the common things one line long:
 | **Time** | Frame delta, slow motion and pause, a named scheduler (`after`, `every`), timers, cooldowns, intervals. |
 | **Input** | Pressed / held / released keys, key repeat with your own timing, typed text, direction helpers. |
 | **Scenes** | Main menu, levels and pause screens as a stack. Shared data between scenes. |
-| **Saving** | `ctx.storage` stores high scores and settings and writes them when the game quits. |
+| **Saving** | `ctx.storage` stores high scores and settings and writes them when the game quits. Optionally encrypted, so players cannot edit their save. |
 | **Windows** | A plain window (winit) by default, or a native wxWidgets window via [wxDragon](https://crates.io/crates/wxdragon). |
 
 ## Contents

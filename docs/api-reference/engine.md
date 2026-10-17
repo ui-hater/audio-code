@@ -99,6 +99,18 @@ character that is not a letter, digit, `-` or `_` replaced by `_`.
 let engine = Engine::new("Game").save_file("saves/profile1.save");
 ```
 
+### `engine.encrypt_save(secret: impl Into<String>) -> Engine`
+
+Encrypts the save file of `ctx.storage` with a key made from `secret` (optional, default
+off). Players can no longer read or edit it; a changed or damaged file is detected, kept as
+`<file>.broken`, and reported by `ctx.storage.load_error()`. An existing plain text save
+still loads and is written encrypted on the next save. See
+[storage.md](storage.md#encryption).
+
+```rust
+let engine = Engine::new("Game").encrypt_save("my secret word");
+```
+
 ### `engine.sound_dir(dir: impl Into<PathBuf>) -> Engine`
 
 Folder searched for sounds by name. Default `"sounds"`, so `ctx.play("step")` finds

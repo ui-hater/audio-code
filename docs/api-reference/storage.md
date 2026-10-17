@@ -112,13 +112,65 @@ if let Some(path) = ctx.storage.path() {
 
 ### `Storage::open(path: impl Into<PathBuf>) -> Storage`
 
-Loads storage from a file. A missing file gives empty storage. The engine does this for
-`ctx.storage`; use it for extra files such as several save slots.
+Loads storage from a plain text file. A missing file gives empty storage. An encrypted
+file cannot be read without its secret; it is kept as `<file>.broken` (see `load_error`).
+The engine does this for `ctx.storage`; use it for extra files such as several save slots.
 
 ```rust
 let mut slot2 = Storage::open("saves/slot2.save");
 slot2.set("level", 4);
 let _ = slot2.save();
+```
+
+## Encryption
+
+Optional. With `Engine::encrypt_save(secret)` (or `Storage::open_encrypted`) the file is
+encrypted and authenticated with XChaCha20-Poly1305, using a key made from `secret`.
+`get` / `set` work the same. Plain text saves still load and are written encrypted on the
+next save. A file that cannot be decrypted (edited, damaged, other secret) is renamed to
+`<file>.broken` instead of being overwritten, and the storage starts empty. The secret is
+compiled into the game, so this stops casual editing, not a determined attacker.
+
+### `Storage::open_encrypted(path: impl Into<PathBuf>, secret: &str) -> Storage`
+
+Loads an encrypted file (or a plain one, to be converted). A missing file gives empty
+storage.
+
+```rust
+let mut slot = Storage::open_encrypted("saves/slot1.save", "my secret word");
+slot.set("coins", 120);
+let _ = slot.save();
+```
+
+### `ctx.storage.load_error() -> Option<&str>`
+
+Why the save file could not be loaded: wrong secret, edited or damaged, or encrypted
+while no secret was given. The file was kept as `<file>.broken`. `None` when loading worked
+or there was no file. Plain `Storage::open` also reports a file that is encrypted or not
+valid text.
+
+```rust
+if ctx.storage.load_error().is_some() {
+    ctx.speak("Your save file could not be read. A new game starts.");
+}
+```
+
+### `ctx.storage.is_encrypted() -> bool`
+
+Whether the file is written encrypted.
+
+```rust
+let protected = ctx.storage.is_encrypted();
+```
+
+### `ctx.storage.set_encryption(secret: Option<&str>)`
+
+Turns encryption on (`Some(secret)`) or off (`None`). The file changes form on the next
+save.
+
+```rust
+ctx.storage.set_encryption(Some("my secret word"));
+let _ = ctx.storage.save();
 ```
 
 ### `Storage::in_memory() -> Storage`

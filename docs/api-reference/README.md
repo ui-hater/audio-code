@@ -114,4 +114,4 @@ Where to find a function by name:
 | `build_level`, `Level::point`, `Level::points` | [level.md](level.md) |
 | `ctx.ui.open`, `message`, `confirm`, `input`, `clicked`, `changed`, `confirmed`, `submitted`, `Menu::*` | [ui.md](ui.md) |
 | `forward`, `right`, `bearing`, `describe_position`, `direction_name`, `clock_position`, `look_at`, `random::*` | [math.md](math.md) |
-| `ctx.storage.get`, `get_or`, `set`, `add`, `save` | [storage.md](storage.md) |
+| `ctx.storage.get`, `get_or`, `set`, `add`, `save`, `load_error`, `Storage::open_encrypted`, `encrypt_save` | [storage.md](storage.md) |

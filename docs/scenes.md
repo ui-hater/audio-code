@@ -115,6 +115,39 @@ Values are stored as text in `<title>.save` in the working directory. Use
 `Engine::save_file("saves/game.save")` for another location. Anything that implements
 `Display` and `FromStr` can be stored.
 
+### Encrypted saves (optional)
+
+A plain text save is easy to edit: a player can give themselves a million coins. Add one
+line to encrypt it:
+
+```rust
+Engine::new("My game").encrypt_save("my secret word").run(MainMenu)
+```
+
+- `ctx.storage` works exactly as before; only the file on disk changes. It is encrypted and
+  authenticated (XChaCha20-Poly1305 with a key made from your secret word), so it can be
+  neither read nor changed unnoticed.
+- Existing plain text saves still load and are written encrypted on the next save. Turning
+  encryption on in an update keeps your players' progress.
+- If the file cannot be decrypted (edited, damaged, or saved with another secret), the game
+  starts with empty storage and the file is **not** overwritten: it is renamed to
+  `<file>.broken`. Tell the player:
+
+```rust
+if ctx.storage.load_error().is_some() {
+    ctx.speak("Your save file could not be read. A new game starts.");
+}
+```
+
+- Changing the secret word later makes old saves unreadable, so pick it once.
+- The secret is inside your game's executable. A determined player can dig it out, so this
+  stops casual cheating and accidental edits, not experts. Do not store real secrets such as
+  passwords in it.
+
+For extra files, such as several save slots, use `Storage::open_encrypted(path, secret)`.
+`storage.set_encryption(Some(secret))` or `set_encryption(None)` switches an open storage;
+the file changes form on the next save.
+
 ## Engine settings
 
 ```rust
@@ -126,6 +159,7 @@ Engine::new("My game")
     .window_size(800, 600)
     .gravity(EARTH_GRAVITY)  // physics gravity (default none)
     .save_file("game.save")  // where ctx.storage is saved
+    .encrypt_save("secret")  // optional: encrypt the save file
     .run(MainMenu)
 ```
 

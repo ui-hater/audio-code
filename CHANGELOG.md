@@ -47,6 +47,10 @@ First version.
   sounds; `World::vehicle`, `vehicle_mut`, `weight`, `speed`, `crashed`, `gear_changed`;
   events `PhysicsEvent::Crashed` and `PhysicsEvent::GearChanged`; `driving` example and
   `docs/vehicles.md`
+- Optional save encryption: `Engine::encrypt_save(secret)`, `Storage::open_encrypted`,
+  `Storage::set_encryption`, `Storage::is_encrypted` (XChaCha20-Poly1305, key from the
+  secret via SHA-256). Plain saves are converted on the next save; unreadable files are kept
+  as `<file>.broken` and reported by `Storage::load_error`
 - API reference in `docs/api-reference/`: every public function with its signature, defaults
   and an example, one page per module
 - Menu music: `Menu::music` loops a track while the menu is open, submenus keep it, and the
