@@ -9,11 +9,13 @@ keywords = ["audiogame", "accessibility", "gamedev", "audio", "screen-reader"]
 categories = ["game-engines", "accessibility", "multimedia::audio"]
 
 [features]
-default = ["nvda"]
+default = ["nvda", "macos"]
 ## Speech and braille output through screen readers / TTS via the prism library (needs CMake and a C++23 compiler).
 prism = ["dep:prismer"]
 ## Windows only: speak through NVDA's controller client DLL when prism is unavailable.
 nvda = ["dep:libloading"]
+## macOS only: speak through VoiceOver (AppleScript) or the system voice (`say`) when prism is unavailable.
+macos = []
 ## Run games inside a wxWidgets window (via wxDragon) instead of the built-in winit window.
 wxdragon = ["dep:wxdragon"]
 

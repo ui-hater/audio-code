@@ -9,7 +9,7 @@ has the short version.
 ```text
  main thread                         audio thread (cpal)            speech thread
  ───────────                         ───────────────────            ─────────────
- window events ──► Runner            Mixer                          prism / NVDA / console
+ window events ──► Runner            Mixer                          prism / NVDA / macOS / console
                      │                 ▲  drains commands              ▲
                      ▼                 │  each audio block             │ Speak, Stop, ...
    your Scene ◄──► Context ── Audio ───┘ (channel)                     │
@@ -170,7 +170,14 @@ sample). `with` adds layers that are summed; `then` appends parts. `build()` ren
    Strings are sent as NUL-terminated UTF-16. "Interrupt" means `cancelSpeech` and then
    `speakText`. If NVDA is not running when a message arrives, the message is printed
    instead.
-3. Neither works: print why, and drop the receiver.
+3. `macos::run` (macOS): fail only if `/usr/bin/say` is missing. Per message, check (cached
+   for two seconds) whether VoiceOver runs with `pgrep -x VoiceOver`. If so, speak with
+   `osascript` (`tell application id "com.apple.VoiceOver" to output ...`, the text passed as
+   an argument so it needs no escaping). If VoiceOver refuses AppleScript once, use the system
+   voice from then on: one `say` process per message, killed on interrupt or `stop`. Queued
+   messages wait in a `VecDeque`, and while one plays the loop polls the channel with
+   `recv_timeout` to start the next as soon as the process exits.
+4. Nothing works: print why, and drop the receiver.
 
 On the main thread, `Speech::send` notices a closed channel and switches to console output
 for good. Messages sent while the thread is still starting are not lost, because they wait in

@@ -5,7 +5,8 @@ the shortcut for the most common call.
 
 The engine picks the first output that works: prism (feature `prism`, talks to NVDA, JAWS,
 VoiceOver, Orca or the system voice), then NVDA's controller client DLL (Windows, feature
-`nvda`, on by default, see `Engine::nvda_dll`), then the console. Speech runs on its own
+`nvda`, on by default, see `Engine::nvda_dll`), then VoiceOver or the system voice (macOS,
+feature `macos`, on by default), then the console. Speech runs on its own
 thread and never blocks the game. Empty text is ignored. In headless mode
 (`Engine::headless`) everything is printed.
 
@@ -76,7 +77,8 @@ let previous: Vec<String> = ctx.speech.history().iter().rev().take(5).cloned().c
 
 ### `ctx.speech.set_rate(rate: f32)`
 
-Speech rate from 0.0 (slowest) to 1.0 (fastest), if the output supports it (prism only).
+Speech rate from 0.0 (slowest) to 1.0 (fastest), if the output supports it (prism and the
+macOS system voice, where 0.5 is a normal rate).
 Screen readers usually keep the user's own settings.
 
 ```rust
@@ -85,7 +87,7 @@ ctx.speech.set_rate(0.6);
 
 ### `ctx.speech.set_volume(volume: f32)`
 
-Speech volume from 0.0 to 1.0, if the output supports it (prism only).
+Speech volume from 0.0 to 1.0, if the output supports it (prism and the macOS system voice).
 
 ```rust
 ctx.speech.set_volume(0.8);
@@ -110,8 +112,8 @@ ctx.speech.set_muted(true);
 
 ### `ctx.speech.backend_name() -> Option<String>`
 
-Name of the active output, for example `"NVDA"`, `"SAPI"` or
-`"NVDA (controller client)"`. `None` while starting up or when printing to the console.
+Name of the active output, for example `"NVDA"`, `"SAPI"`, `"NVDA (controller client)"`,
+`"VoiceOver (AppleScript)"` or `"macOS system voice (say)"`. `None` while starting up or when printing to the console.
 
 ```rust
 if let Some(name) = ctx.speech.backend_name() {

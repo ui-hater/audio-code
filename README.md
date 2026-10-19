@@ -22,7 +22,7 @@ make the common things one line long:
 | **Input** | Pressed / held / released keys, key repeat with your own timing, typed text, direction helpers. |
 | **Scenes** | Main menu, levels and pause screens as a stack. Shared data between scenes. |
 | **Saving** | `ctx.storage` stores high scores and settings and writes them when the game quits. Optionally encrypted, so players cannot edit their save. |
-| **Windows** | A plain window (winit) by default, or a native wxWidgets window via [wxDragon](https://crates.io/crates/wxdragon). |
+| **Windows** | Runs on Windows, macOS and Linux. A plain window (winit) by default, or a native wxWidgets window via [wxDragon](https://crates.io/crates/wxdragon). |
 
 ## Contents
 
@@ -320,7 +320,9 @@ audio-code = { git = "https://github.com/<you>/audio-code" }
 The default build is pure Rust. On Windows it speaks through NVDA's controller client DLL
 (the `nvda` feature): put `nvdaControllerClient.dll` (from the NVDA controller client
 download) next to your game's `.exe`. Details are in
-[docs/speech.md](docs/speech.md#nvda-controller-client).
+[docs/speech.md](docs/speech.md#nvda-controller-client). On macOS it speaks through VoiceOver
+or the system voice (the `macos` feature), see
+[docs/speech.md](docs/speech.md#macos-voiceover-and-the-system-voice).
 
 ### With prism
 
@@ -346,6 +348,7 @@ need **CMake 3.24+** and a **C++23 compiler**:
 |------------|---------|--------------|
 | `prism`    | no      | Speech and braille through screen readers and system voices. |
 | `nvda`     | yes     | Windows: speech through `nvdaControllerClient.dll` when prism is unavailable. |
+| `macos`    | yes     | macOS: speech through VoiceOver (AppleScript) or the system voice (`say`) when prism is unavailable. |
 | `wxdragon` | no      | `Engine::run_wx` and `audio_code::wx` for native wxWidgets windows. |
 
 If no speech output is available at all, speech is printed to the console and the game keeps
@@ -391,7 +394,8 @@ src/
 │   └── synth.rs    the synthesizer
 ├── speech/
 │   ├── mod.rs      Speech (public API), the speech thread and its fallback chain
-│   └── nvda.rs     NVDA controller client, loaded at runtime (Windows)
+│   ├── nvda.rs     NVDA controller client, loaded at runtime (Windows)
+│   └── macos.rs    VoiceOver via AppleScript, or the `say` command (macOS)
 ├── ui/
 │   ├── mod.rs      Ui (widget stack), Widget trait, UiEvent, Value
 │   ├── menu.rs     Menu and its items
@@ -415,7 +419,7 @@ deal with locks or channels yourself.
 ```text
  main thread                         audio thread (cpal)            speech thread
  ───────────                         ───────────────────            ─────────────
- window events ──► Runner            Mixer                          prism / NVDA / console
+ window events ──► Runner            Mixer                          prism / NVDA / macOS / console
                      │                 ▲  drains commands              ▲
                      ▼                 │  each audio block             │ Speak, Stop, ...
    your Scene ◄──► Context ── Audio ───┘ (channel)                     │
@@ -444,8 +448,8 @@ Music is decoded on a background thread. Its voice already exists and simply sta
 until the data is ready, so starting music never makes the game stutter.
 
 **Speech.** `ctx.speech.speak` puts the text into a channel and returns immediately. The
-speech thread tries prism first, then the NVDA controller client, and uses the first that
-works. If neither works, the thread ends, and `Speech` notices the closed channel and prints
+speech thread tries prism first, then the NVDA controller client (Windows) or VoiceOver and
+the system voice (macOS), and uses the first that works. If none works, the thread ends, and `Speech` notices the closed channel and prints
 to the console from then on. A history of the last 100 messages stays on the main thread,
 which is what makes `repeat_last` possible.
 

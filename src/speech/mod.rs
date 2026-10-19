@@ -7,10 +7,14 @@
 //!    (SAPI / OneCore, AVSpeech, speech-dispatcher, ...).
 //! 2. **NVDA controller client** (Windows, feature `nvda`). Loads `nvdaControllerClient.dll`
 //!    at runtime and speaks through NVDA. See [`Engine::nvda_dll`](crate::Engine::nvda_dll).
-//! 3. **The console.** Everything is printed, so the game always keeps working.
+//! 3. **VoiceOver or the system voice** (macOS, feature `macos`). Speaks through VoiceOver when
+//!    it runs and allows AppleScript control, otherwise through the `say` command.
+//! 4. **The console.** Everything is printed, so the game always keeps working.
 //!
 //! Speech runs on its own thread, so speaking never blocks your game loop.
 
+#[cfg(all(target_os = "macos", feature = "macos"))]
+mod macos;
 #[cfg(all(windows, feature = "nvda"))]
 mod nvda;
 
@@ -21,7 +25,7 @@ use std::sync::{Arc, Mutex};
 
 const HISTORY_LEN: usize = 100;
 
-// Rate and volume are only used by prism.
+// Only prism uses every command (NVDA ignores rate and volume, macOS ignores braille).
 #[cfg_attr(not(feature = "prism"), allow(dead_code))]
 enum Command {
     Speak { text: String, interrupt: bool },
@@ -39,7 +43,7 @@ struct Shared {
 }
 
 impl Shared {
-    #[cfg_attr(not(any(feature = "prism", all(windows, feature = "nvda"))), allow(dead_code))]
+    #[cfg_attr(not(any(feature = "prism", all(windows, feature = "nvda"), all(target_os = "macos", feature = "macos"))), allow(dead_code))]
     fn set_backend(&self, name: String) {
         *self.backend.lock().unwrap_or_else(|e| e.into_inner()) = Some(name);
     }
@@ -166,7 +170,8 @@ impl Speech {
         self.muted = muted;
     }
 
-    /// Name of the active output, e.g. "NVDA", "SAPI" or "NVDA (controller client)".
+    /// Name of the active output, e.g. "NVDA", "SAPI", "NVDA (controller client)" or
+    /// "VoiceOver (AppleScript)".
     /// `None` while starting up or when printing to the console.
     pub fn backend_name(&self) -> Option<String> {
         self.shared.backend.lock().unwrap_or_else(|e| e.into_inner()).clone()
@@ -176,12 +181,12 @@ impl Speech {
 /// Starts the output thread, or returns `None` if no output is compiled in.
 #[cfg_attr(not(all(windows, feature = "nvda")), allow(unused_variables))]
 fn spawn(shared: Arc<Shared>, nvda_dll: Option<PathBuf>) -> Option<Sender<Command>> {
-    if !cfg!(any(feature = "prism", all(windows, feature = "nvda"))) {
+    if !cfg!(any(feature = "prism", all(windows, feature = "nvda"), all(target_os = "macos", feature = "macos"))) {
         return None;
     }
     let (tx, rx) = channel::<Command>();
     let spawned = std::thread::Builder::new().name("audio-code speech".into()).spawn(move || {
-        #[cfg_attr(not(any(feature = "prism", all(windows, feature = "nvda"))), allow(unused_mut))]
+        #[cfg_attr(not(any(feature = "prism", all(windows, feature = "nvda"), all(target_os = "macos", feature = "macos"))), allow(unused_mut))]
         let mut reasons: Vec<String> = Vec::new();
 
         #[cfg(feature = "prism")]
@@ -194,6 +199,12 @@ fn spawn(shared: Arc<Shared>, nvda_dll: Option<PathBuf>) -> Option<Sender<Comman
         match nvda::run(&rx, &shared, nvda_dll.as_deref()) {
             Ok(()) => return,
             Err(e) => reasons.push(format!("NVDA controller client: {e}")),
+        }
+
+        #[cfg(all(target_os = "macos", feature = "macos"))]
+        match macos::run(&rx, &shared) {
+            Ok(()) => return,
+            Err(e) => reasons.push(format!("macOS speech: {e}")),
         }
 
         eprintln!("audio-code: no speech output found ({}); printing to console", reasons.join("; "));

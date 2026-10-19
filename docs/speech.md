@@ -52,7 +52,8 @@ The engine uses the first output that works:
 
 1. **prism** (feature `prism`)
 2. **NVDA controller client** (Windows, feature `nvda`)
-3. **the console**
+3. **VoiceOver or the system voice** (macOS, feature `macos`)
+4. **the console**
 
 `ctx.speech.backend_name()` tells you which one is active, e.g. `"NVDA (controller client)"`.
 
@@ -78,6 +79,22 @@ The engine looks in this order:
 
 If NVDA is not running when a message is spoken, the message is printed to the console
 instead. NVDA keeps the user's own rate and volume, so `set_rate` and `set_volume` do nothing.
+
+### macOS: VoiceOver and the system voice
+
+On macOS the default build speaks without prism and without any extra library (feature
+`macos`, on by default):
+
+- If **VoiceOver** is running, messages go to VoiceOver through AppleScript, so players hear
+  their own VoiceOver voice and settings. For this, the player must check *Allow VoiceOver to
+  be controlled with AppleScript* in VoiceOver Utility (General). The first time, macOS may
+  also ask whether the game (or the terminal) may control VoiceOver.
+- Otherwise, or if VoiceOver refuses AppleScript, the **system voice** speaks through the
+  `say` command. `set_rate` (0.5 is a normal rate) and `set_volume` work here.
+
+VoiceOver is checked every few seconds, so turning it on or off while the game runs works.
+VoiceOver has no queue, so `speak_queued` interrupts there like `speak`, and `stop` does
+nothing. Braille is not supported by this output; use prism for braille on macOS.
 
 ### Console
 
