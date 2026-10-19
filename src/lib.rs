@@ -53,6 +53,7 @@
 #![warn(missing_docs)]
 
 pub mod audio;
+mod bundle;
 mod engine;
 mod error;
 pub mod input;
@@ -113,7 +114,7 @@ pub mod prelude {
     pub use crate::level::Level;
     pub use crate::math::{self, Vec2, Vec3, random, vec2, vec3};
     pub use crate::physics::{Body, BodyId, BodyKind, EARTH_GRAVITY, MoveResult, PhysicsEvent, RayHit, Shape, World};
-    pub use crate::speech::Speech;
+    pub use crate::speech::{Speech, Voice};
     pub use crate::storage::Storage;
     pub use crate::time::{Cooldown, Interval, Time, Timer};
     pub use crate::ui::{Confirm, Menu, Message, TextInput, Ui, UiEvent, UiSound, UiSounds, Value, Widget};

@@ -4,7 +4,8 @@
 //!   (`NSAccessibilityAnnouncementRequestedNotification`), so players hear their own VoiceOver
 //!   voice and settings, and the text also reaches a braille display.
 //! - **System voice**: otherwise `AVSpeechSynthesizer` speaks, using the voice, rate and volume
-//!   from the system's Spoken Content settings unless the game sets its own.
+//!   from the system's Spoken Content settings unless the game sets its own. Its voices are
+//!   listed for `Speech::voices`.
 //!
 //! AppKit must be used from the main thread, so the speech thread only forwards commands to
 //! the main dispatch queue. The window's event loop (winit or wxWidgets) runs that queue
@@ -23,10 +24,10 @@ use objc2_app_kit::{
     NSAccessibilityPostNotificationWithUserInfo, NSAccessibilityPriorityKey, NSAccessibilityPriorityLevel,
     NSApplication, NSWorkspace,
 };
-use objc2_avf_audio::{AVSpeechBoundary, AVSpeechSynthesizer, AVSpeechUtterance};
+use objc2_avf_audio::{AVSpeechBoundary, AVSpeechSynthesisVoice, AVSpeechSynthesizer, AVSpeechUtterance};
 use objc2_foundation::{NSDictionary, NSNumber, NSString};
 
-use super::{Command, Shared};
+use super::{Command, Shared, Voice, sort_voices};
 
 const VOICEOVER: &str = "VoiceOver";
 const SYSTEM_VOICE: &str = "AVSpeechSynthesizer";
@@ -39,6 +40,7 @@ thread_local! {
 struct Output {
     synth: Retained<AVSpeechSynthesizer>,
     /// Set by the game; `None` keeps the user's Spoken Content settings.
+    voice: Option<Retained<AVSpeechSynthesisVoice>>,
     rate: Option<f32>,
     volume: Option<f32>,
     backend: &'static str,
@@ -48,7 +50,7 @@ impl Output {
     fn new() -> Self {
         // SAFETY: plain allocation and init of an AVFoundation object.
         let synth = unsafe { AVSpeechSynthesizer::new() };
-        Self { synth, rate: None, volume: None, backend: "" }
+        Self { synth, voice: None, rate: None, volume: None, backend: "" }
     }
 
     fn handle(&mut self, mtm: MainThreadMarker, cmd: Command, shared: &Shared) {
@@ -68,6 +70,10 @@ impl Output {
             // VoiceOver keeps the user's own rate and volume, like NVDA.
             Command::Rate(rate) => self.rate = Some(rate),
             Command::Volume(volume) => self.volume = Some(volume),
+            // SAFETY: class method with a valid string; an unknown id returns nil.
+            Command::Voice(id) => {
+                self.voice = id.and_then(|id| unsafe { AVSpeechSynthesisVoice::voiceWithIdentifier(&NSString::from_str(&id)) });
+            }
             // Announcements are always spoken as well, so there is no braille-only output.
             Command::Braille(_) => {}
         }
@@ -88,15 +94,20 @@ impl Output {
                 self.synth.stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
             }
             let utterance = AVSpeechUtterance::speechUtteranceWithString(&NSString::from_str(text));
-            match self.rate {
+            if let Some(voice) = &self.voice {
+                utterance.setVoice(Some(voice));
+            }
+            if let Some(rate) = self.rate {
                 // AVSpeech rates go from 0.0 to 1.0 with 0.5 as the default, just like ours.
-                Some(rate) => utterance.setRate(rate),
-                // macOS 14+: use the voice and rate from System Settings > Accessibility >
-                // Spoken Content instead of the generic defaults.
-                None if utterance.respondsToSelector(sel!(setPrefersAssistiveTechnologySettings:)) => {
-                    utterance.setPrefersAssistiveTechnologySettings(true);
-                }
-                None => {}
+                utterance.setRate(rate);
+            }
+            // macOS 14+: without the game's own choices, use the voice and rate from System
+            // Settings > Accessibility > Spoken Content instead of the generic defaults.
+            if self.voice.is_none()
+                && self.rate.is_none()
+                && utterance.respondsToSelector(sel!(setPrefersAssistiveTechnologySettings:))
+            {
+                utterance.setPrefersAssistiveTechnologySettings(true);
             }
             if let Some(volume) = self.volume {
                 utterance.setVolume(volume);
@@ -141,6 +152,21 @@ fn announce(mtm: MainThreadMarker, text: &str, interrupt: bool) {
     unsafe { NSAccessibilityPostNotificationWithUserInfo(element, notification, Some(&info)) };
 }
 
+/// All installed system voices. A class method that is safe off the main thread.
+fn system_voices() -> Vec<Voice> {
+    // SAFETY: class method without arguments; the returned voices are valid objects.
+    let list = unsafe { AVSpeechSynthesisVoice::speechVoices() };
+    let mut voices: Vec<Voice> = list
+        .to_vec()
+        .into_iter()
+        .map(|v| unsafe {
+            Voice { id: v.identifier().to_string(), name: v.name().to_string(), language: Some(v.language().to_string()) }
+        })
+        .collect();
+    sort_voices(&mut voices);
+    voices
+}
+
 /// Runs a command on the main thread.
 fn on_main(cmd: Command, shared: &Arc<Shared>) {
     let shared = shared.clone();
@@ -156,6 +182,7 @@ pub(super) fn run(rx: &Receiver<Command>, shared: &Arc<Shared>) -> Result<(), St
     if AnyClass::get(c"AVSpeechSynthesizer").is_none() {
         return Err("AVSpeechSynthesizer is not available (needs macOS 10.14 or newer)".into());
     }
+    shared.set_voices(system_voices());
     // Creates the synthesizer early, so the first message is not delayed.
     on_main(Command::Stop, shared);
     for cmd in rx {

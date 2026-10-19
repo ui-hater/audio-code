@@ -29,6 +29,7 @@ Engine::new("My game").gravity(EARTH_GRAVITY).run_with(Level::new)?;   // Level:
 | What | Code |
 |------|------|
 | Speak | `ctx.speak("Hello")` |
+| Pick a voice | `ctx.speech.voices()`, `ctx.speech.set_voice("Anna")` |
 | Play a sound | `ctx.play("door")` (finds `sounds/door.ogg`) |
 | Play at a place | `ctx.play_at("door", vec3(3.0, 5.0, 0.0))` |
 | Key went down | `ctx.pressed(Key::Space)` |

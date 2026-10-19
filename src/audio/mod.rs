@@ -26,7 +26,8 @@
 //! 1. The name as given (`"sounds/step.ogg"`).
 //! 2. Inside the sound directory set with [`Engine::sound_dir`](crate::Engine::sound_dir)
 //!    (default `"sounds"`).
-//! 3. If the name has no extension, `.ogg`, `.wav`, `.mp3`, `.flac`, `.opus` and `.m4a` are tried.
+//! 3. In a macOS app bundle, both of the above inside `Contents/Resources`.
+//! 4. If the name has no extension, `.ogg`, `.wav`, `.mp3`, `.flac`, `.opus` and `.m4a` are tried.
 //!
 //! So with the default settings `ctx.audio.play("step")` finds `sounds/step.ogg`.
 //!
@@ -168,7 +169,13 @@ impl Audio {
 
     fn resolve(&self, name: &str) -> Option<PathBuf> {
         let given = Path::new(name);
-        let bases = [given.to_path_buf(), self.sound_dir.join(given)];
+        let mut bases = vec![given.to_path_buf(), self.sound_dir.join(given)];
+        // A macOS app bundle ships its files in `Contents/Resources`.
+        if given.is_relative()
+            && let Some(resources) = crate::bundle::resources()
+        {
+            bases.extend([resources.join(&bases[0]), resources.join(&bases[1])]);
+        }
         for base in &bases {
             if base.is_file() {
                 return Some(base.clone());
@@ -218,7 +225,14 @@ impl Audio {
     /// relative to the sound directory without extension, e.g. `"step"`.
     /// Returns how many files were loaded.
     pub fn preload_dir(&mut self, dir: impl AsRef<Path>) -> Result<usize> {
-        let dir = self.sound_dir.join(dir.as_ref());
+        let mut root = self.sound_dir.clone();
+        if !root.join(dir.as_ref()).is_dir()
+            && root.is_relative()
+            && let Some(resources) = crate::bundle::resources()
+        {
+            root = resources.join(root);
+        }
+        let dir = root.join(dir.as_ref());
         let mut count = 0;
         for entry in std::fs::read_dir(&dir)? {
             let path = entry?.path();
@@ -229,7 +243,7 @@ impl Audio {
             if !is_sound {
                 continue;
             }
-            let rel = path.strip_prefix(&self.sound_dir).unwrap_or(&path).with_extension("");
+            let rel = path.strip_prefix(&root).unwrap_or(&path).with_extension("");
             let name = rel.to_string_lossy().replace('\\', "/");
             if let std::collections::hash_map::Entry::Vacant(entry) = self.cache.entry(name) {
                 entry.insert(Arc::new(SoundSlot::ready(SoundData::load(&path)?)));

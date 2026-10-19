@@ -111,6 +111,11 @@ does not stop the sound, because the mixer owns the voice.
 Missing files go through `slot_or_warn`, which warns once per name and returns a dead handle
 (`Sound::none()`).
 
+Inside a macOS app bundle (`bundle.rs` checks for `Name.app/Contents/MacOS/<exe>`) the
+working directory is `/`, so `resolve` and `preload_dir` also try relative names under
+`Contents/Resources`, and the default save file moves to
+`~/Library/Application Support/<title>/`.
+
 `play_music` creates an empty slot, starts a thread that decodes the file into it, and
 creates the voice right away. The mixer skips voices whose slot is not ready yet, so the
 music starts as soon as decoding finishes, without blocking the game.
@@ -181,6 +186,14 @@ sample). `with` adds layers that are summed; `then` appends parts. `build()` ren
    synthesizer queues by itself). Without a game-set rate, the utterance uses the user's
    Spoken Content settings (`prefersAssistiveTechnologySettings`, if the OS has it).
 4. Nothing works: print why, and drop the receiver.
+
+Each output publishes its voice list into `Shared` (`Mutex<Option<Vec<Voice>>>` plus a
+`Condvar`) as soon as it starts, an empty list if it has no voices or fails. `Speech::voices`
+waits on the condvar (at most three seconds), so it never needs a round trip through the
+speech thread. That matters on macOS, where the game thread is the main thread: a blocking
+request to an output that runs on the main queue would deadlock. `set_voice` resolves the
+name against that list and sends `Command::Voice(Some(id))`; prism gets the index back, macOS
+looks the id up with `AVSpeechSynthesisVoice voiceWithIdentifier:`.
 
 On the main thread, `Speech::send` notices a closed channel and switches to console output
 for good. Messages sent while the thread is still starting are not lost, because they wait in

@@ -367,6 +367,7 @@ the 3D sound.
 | `beacon` | text map maze, turning and walking, 3D beacons, pause scene, saved best time |
 | `platformer` | gravity, jumping, landing sounds, a lift, a pushable crate, collecting coins |
 | `flight` | full 3D: fly a drone, look up and down, find birds at different heights |
+| `bell_catcher` | a complete small game: catch falling bells by ear, voice and speech rate menu, saved best score |
 | `driving` | drive a car or a truck through a town: gears, reverse, horn, fuel, loading the truck, crashes |
 | `wx_game` | a game inside a wxWidgets window next to a native button |
 
@@ -396,6 +397,7 @@ src/
 │   ├── mod.rs      Speech (public API), the speech thread and its fallback chain
 │   ├── nvda.rs     NVDA controller client, loaded at runtime (Windows)
 │   └── macos.rs    VoiceOver announcements and AVSpeechSynthesizer (macOS)
+├── bundle.rs       finding files and the save folder inside a macOS .app
 ├── ui/
 │   ├── mod.rs      Ui (widget stack), Widget trait, UiEvent, Value
 │   ├── menu.rs     Menu and its items
@@ -497,7 +499,8 @@ gives silent audio and console speech, and drive frames by hand with `Runner::fr
 - [Cheat sheet](docs/cheatsheet.md): the most used calls on one page
 - [Getting started](docs/getting-started.md): your first game, step by step
 - [Sound](docs/audio.md): playing, positioning, music, the synth, file lookup
-- [Speech](docs/speech.md): screen readers, NVDA fallback, history, braille
+- [Speech](docs/speech.md): screen readers, NVDA fallback, voices, history, braille
+- [macOS](docs/macos.md): speech on the Mac and shipping your game as a `.app`
 - [Virtual UI](docs/ui.md): menus, dialogs, text input, custom click sounds, custom widgets
 - [Physics](docs/physics.md): bodies, gravity, jumping, events, levels from text maps
 - [Cars and trucks](docs/vehicles.md): weight, speed, steering, gears, brakes, fuel, vehicle sounds

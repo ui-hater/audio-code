@@ -18,7 +18,7 @@ cargo test
 cargo test   physics::tests::jump_reaches_height   # single test (path filter)
 cargo clippy --features wxdragon --all-targets  # must stay warning-free
 RUSTDOCFLAGS="-D warnings" cargo doc --features wxdragon --no-deps
-cargo run    --example menus      # hello, clicker, menus, beacon, platformer, flight, driving
+cargo run    --example menus      # hello, clicker, menus, beacon, bell_catcher, platformer, flight, driving
 cargo run    --features wxdragon --example wx_game
 ```
 
@@ -26,6 +26,7 @@ cargo run    --features wxdragon --example wx_game
 - Feature-gated items (`wx`, `Engine::run_wx`) must not be intra-doc linked from ungated docs. Write them as plain code text.
 - Examples open a real window and audio device and run until Escape. For smoke tests, build first and then run the exe with `timeout`, because linking inside `timeout cargo run` gets killed. The windows can steal keyboard focus from the user.
 - To get NVDA speech in the examples, `nvdaControllerClient64.dll` must sit next to the exe (`target/debug/examples/`). A copy exists at `%LOCALAPPDATA%\RemSound\`. Never commit the DLL.
+- macOS code (`src/speech/macos.rs`, feature `macos`) is checked from Windows with `cargo clippy --target aarch64-apple-darwin --all-targets` (targets are installed). A `.app` is built with `scripts/macos_app.py` via cargo-zigbuild (zig 0.13 from pip, `SDKROOT` pointing to a macOS SDK); see `docs/macos.md`. cargo-zigbuild leaves a `.intentionally-empty-file.o` in the repo root; delete it, never commit it.
 - Tests that need an engine use `Engine::new(..).headless().build(scene)`, which gives a silent audio system, console speech and no window, and drive it with `runner.frame()` / `runner.key_down(..)`. UI tests use the `Harness` in `src/ui/mod.rs`.
 
 ## Features

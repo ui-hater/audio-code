@@ -20,6 +20,10 @@ First version.
   `Engine::nvda_dll`
 - macOS support: speech through VoiceOver announcements or the system voice
   (`AVSpeechSynthesizer`) without prism (`macos` feature, default on)
+- Voices: `Speech::voices`, `set_voice`, `reset_voice`, `voice` and the `Voice` type
+- macOS app bundles: sounds are also found in `Contents/Resources`, saves go to
+  `~/Library/Application Support/<title>/`; `scripts/macos_app.py` builds a universal `.app`
+- `bell_catcher` example: a small complete game with a voice menu
 - `Synth` for designing clicks and effects in code; `Audio::register` accepts synths
 - Custom UI sounds: `Ui::set_sound`, `Ui::set_sound_data`, `UiSounds::with/without`,
   `Menu::sound`, new `Wrap` and `Typing` sound slots

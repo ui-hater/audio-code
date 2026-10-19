@@ -15,7 +15,8 @@
 //! # }
 //! ```
 //!
-//! The file is `<game title>.save` in the working directory unless set with
+//! The file is `<game title>.save` in the working directory (in a macOS app bundle:
+//! `~/Library/Application Support/<game title>/`) unless set with
 //! [`Engine::save_file`](crate::Engine::save_file). Anything that implements `Display` and
 //! `FromStr` can be stored: numbers, `bool`, `String`, ...
 //!
@@ -331,7 +332,12 @@ pub(crate) fn default_file(title: &str) -> PathBuf {
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect();
     let name = if name.trim_matches('_').is_empty() { "game".to_string() } else { name };
-    PathBuf::from(format!("{name}.save"))
+    let file = PathBuf::from(format!("{name}.save"));
+    // Inside a macOS app bundle the working directory is `/`, which is not writable.
+    match crate::bundle::data_dir(&name) {
+        Some(dir) => dir.join(file),
+        None => file,
+    }
 }
 
 #[cfg(test)]

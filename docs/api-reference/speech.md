@@ -93,6 +93,66 @@ Speech volume from 0.0 to 1.0, if the output supports it (prism and the macOS sy
 ctx.speech.set_volume(0.8);
 ```
 
+### `ctx.speech.voices() -> Vec<Voice>`
+
+The voices of the system voice output (prism's TTS voices, or `AVSpeechSynthesizer` on
+macOS), sorted by language and name. Empty when a screen reader speaks (it keeps the voice
+the player set up there) or speech goes to the console. Right after the start this waits until
+the output is ready, at most a few seconds.
+
+```rust
+for voice in ctx.speech.voices() {
+    println!("{voice}"); // "Anna (de-DE)"
+}
+```
+
+### `ctx.speech.set_voice(voice: impl AsRef<str>) -> bool`
+
+Switches the system voice. Accepts a `Voice::id` or a voice name in any case. Returns `false`
+(and prints a warning) if there is no such voice; the current voice stays.
+
+```rust
+if !ctx.speech.set_voice("Anna") {
+    ctx.speak("That voice is not installed");
+}
+```
+
+### `ctx.speech.reset_voice()`
+
+Goes back to the voice the game started with.
+
+```rust
+ctx.speech.reset_voice();
+```
+
+### `ctx.speech.voice() -> Option<&Voice>`
+
+The voice chosen with `set_voice`, or `None` for the default voice.
+
+```rust
+let name = ctx.speech.voice().map_or("default", |v| v.name.as_str());
+```
+
+### `Voice`
+
+```rust
+pub struct Voice {
+    pub id: String,               // for set_voice, e.g. "com.apple.voice.compact.de-DE.Anna"
+    pub name: String,             // "Anna", show this to players
+    pub language: Option<String>, // "de-DE"
+}
+```
+
+`Display` prints the name and language, e.g. `Anna (de-DE)`. Save `id` to remember the
+player's choice:
+
+```rust
+if let Some(voice) = ctx.speech.voice() {
+    let id = voice.id.clone();
+    ctx.storage.set("voice", id);
+}
+```
+
 ### `ctx.speech.set_echo(echo: bool)`
 
 Also prints everything spoken to the console. Same as `Engine::echo_speech`, but can be

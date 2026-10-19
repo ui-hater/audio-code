@@ -54,6 +54,7 @@ objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, 
 objc2-avf-audio = { version = "0.3.2", optional = true, default-features = false, features = ["std", "AVSpeechSynthesis"] }
 objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = [
     "std",
+    "NSArray",
     "NSDictionary",
     "NSObject",
     "NSString",

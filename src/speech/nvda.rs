@@ -114,6 +114,8 @@ fn candidates(custom: Option<&Path>) -> Vec<PathBuf> {
 pub(super) fn run(rx: &Receiver<Command>, shared: &Shared, dll: Option<&Path>) -> Result<(), String> {
     let client = Client::load(dll)?;
     shared.set_backend("NVDA (controller client)".into());
+    // NVDA speaks with the voice the player chose in NVDA.
+    shared.set_voices(Vec::new());
     for cmd in rx {
         let running = client.is_running();
         match cmd {
