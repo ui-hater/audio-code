@@ -348,7 +348,7 @@ need **CMake 3.24+** and a **C++23 compiler**:
 |------------|---------|--------------|
 | `prism`    | no      | Speech and braille through screen readers and system voices. |
 | `nvda`     | yes     | Windows: speech through `nvdaControllerClient.dll` when prism is unavailable. |
-| `macos`    | yes     | macOS: speech through VoiceOver (AppleScript) or the system voice (`say`) when prism is unavailable. |
+| `macos`    | yes     | macOS: speech through VoiceOver announcements or the system voice (`AVSpeechSynthesizer`) when prism is unavailable. |
 | `wxdragon` | no      | `Engine::run_wx` and `audio_code::wx` for native wxWidgets windows. |
 
 If no speech output is available at all, speech is printed to the console and the game keeps
@@ -395,7 +395,7 @@ src/
 ├── speech/
 │   ├── mod.rs      Speech (public API), the speech thread and its fallback chain
 │   ├── nvda.rs     NVDA controller client, loaded at runtime (Windows)
-│   └── macos.rs    VoiceOver via AppleScript, or the `say` command (macOS)
+│   └── macos.rs    VoiceOver announcements and AVSpeechSynthesizer (macOS)
 ├── ui/
 │   ├── mod.rs      Ui (widget stack), Widget trait, UiEvent, Value
 │   ├── menu.rs     Menu and its items

@@ -18,8 +18,8 @@ First version.
 - winit window backend, optional wxDragon backend (`wxdragon` feature)
 - Speech fallback to NVDA's controller client DLL on Windows (`nvda` feature, default on),
   `Engine::nvda_dll`
-- macOS support: speech through VoiceOver (AppleScript) or the system voice (`say`) without
-  prism (`macos` feature, default on)
+- macOS support: speech through VoiceOver announcements or the system voice
+  (`AVSpeechSynthesizer`) without prism (`macos` feature, default on)
 - `Synth` for designing clicks and effects in code; `Audio::register` accepts synths
 - Custom UI sounds: `Ui::set_sound`, `Ui::set_sound_data`, `UiSounds::with/without`,
   `Menu::sound`, new `Wrap` and `Typing` sound slots

@@ -1,216 +1,166 @@
-//! Speech on macOS without extra libraries: VoiceOver through AppleScript, or the system voice
-//! through the `say` command.
+//! Speech on macOS through Apple's own APIs:
 //!
-//! VoiceOver only accepts AppleScript when "Allow VoiceOver to be controlled with AppleScript"
-//! is checked in VoiceOver Utility. Without it, the system voice is used instead.
+//! - **VoiceOver**: when it is on, messages are posted as accessibility announcements
+//!   (`NSAccessibilityAnnouncementRequestedNotification`), so players hear their own VoiceOver
+//!   voice and settings, and the text also reaches a braille display.
+//! - **System voice**: otherwise `AVSpeechSynthesizer` speaks, using the voice, rate and volume
+//!   from the system's Spoken Content settings unless the game sets its own.
+//!
+//! AppKit must be used from the main thread, so the speech thread only forwards commands to
+//! the main dispatch queue. The window's event loop (winit or wxWidgets) runs that queue
+//! between frames; all state lives in a thread local there.
 
-use std::collections::VecDeque;
-use std::path::Path;
-use std::process::{Child, Command as Process, Stdio};
-use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::time::{Duration, Instant};
+use std::cell::RefCell;
+use std::sync::Arc;
+use std::sync::mpsc::Receiver;
+
+use dispatch2::DispatchQueue;
+use objc2::rc::Retained;
+use objc2::runtime::{AnyClass, AnyObject, NSObjectProtocol};
+use objc2::{MainThreadMarker, sel};
+use objc2_app_kit::{
+    NSAccessibilityAnnouncementKey, NSAccessibilityAnnouncementRequestedNotification,
+    NSAccessibilityPostNotificationWithUserInfo, NSAccessibilityPriorityKey, NSAccessibilityPriorityLevel,
+    NSApplication, NSWorkspace,
+};
+use objc2_avf_audio::{AVSpeechBoundary, AVSpeechSynthesizer, AVSpeechUtterance};
+use objc2_foundation::{NSDictionary, NSNumber, NSString};
 
 use super::{Command, Shared};
 
-const SAY: &str = "/usr/bin/say";
-const OSASCRIPT: &str = "/usr/bin/osascript";
-const VOICEOVER: &str = "VoiceOver (AppleScript)";
-const SYSTEM_VOICE: &str = "macOS system voice (say)";
-/// How often the `say` process is checked so queued messages start on time.
-const POLL: Duration = Duration::from_millis(30);
-/// How long a "VoiceOver is (not) running" answer is trusted.
-const VOICEOVER_CHECK: Duration = Duration::from_secs(2);
+const VOICEOVER: &str = "VoiceOver";
+const SYSTEM_VOICE: &str = "AVSpeechSynthesizer";
 
-/// The system voice, one `say` process per message.
-#[derive(Default)]
-struct Say {
-    current: Option<Child>,
-    queue: VecDeque<String>,
-    /// Words per minute, `None` for the user's default.
-    rate: Option<u32>,
+thread_local! {
+    /// The output, created on first use. Only ever touched on the main thread.
+    static OUTPUT: RefCell<Option<Output>> = const { RefCell::new(None) };
+}
+
+struct Output {
+    synth: Retained<AVSpeechSynthesizer>,
+    /// Set by the game; `None` keeps the user's Spoken Content settings.
+    rate: Option<f32>,
     volume: Option<f32>,
+    backend: &'static str,
 }
 
-impl Say {
-    fn speak(&mut self, text: String, interrupt: bool) {
-        if interrupt {
-            self.stop();
-        }
-        self.queue.push_back(text);
-        self.poll();
-    }
-
-    fn stop(&mut self) {
-        self.queue.clear();
-        if let Some(mut child) = self.current.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
-
-    /// Starts the next queued message once the current one has finished.
-    fn poll(&mut self) {
-        if let Some(child) = &mut self.current {
-            if matches!(child.try_wait(), Ok(None)) {
-                return;
-            }
-            self.current = None;
-        }
-        while let Some(text) = self.queue.pop_front() {
-            let mut cmd = Process::new(SAY);
-            if let Some(rate) = self.rate {
-                cmd.arg("-r").arg(rate.to_string());
-            }
-            // `say` has no volume option, but understands this embedded command.
-            let text = match self.volume {
-                Some(volume) => format!("[[volm {volume:.2}]] {text}"),
-                None => text,
-            };
-            cmd.arg("--").arg(text).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-            if let Ok(child) = cmd.spawn() {
-                self.current = Some(child);
-                return;
-            }
-        }
-    }
-
-    fn busy(&self) -> bool {
-        self.current.is_some() || !self.queue.is_empty()
-    }
-}
-
-/// Maps the engine's 0.0..=1.0 rate to words per minute; 0.5 is a normal speaking rate.
-fn words_per_minute(rate: f32) -> u32 {
-    let wpm = if rate <= 0.5 { 80.0 + rate * 200.0 } else { 180.0 + (rate - 0.5) * 640.0 };
-    wpm.round() as u32
-}
-
-/// VoiceOver, controlled through `osascript`.
-struct VoiceOver {
-    running: bool,
-    checked: Option<Instant>,
-    /// Cleared when VoiceOver refuses AppleScript, so the system voice takes over.
-    scriptable: bool,
-}
-
-impl VoiceOver {
+impl Output {
     fn new() -> Self {
-        Self { running: false, checked: None, scriptable: true }
+        // SAFETY: plain allocation and init of an AVFoundation object.
+        let synth = unsafe { AVSpeechSynthesizer::new() };
+        Self { synth, rate: None, volume: None, backend: "" }
     }
 
-    fn active(&mut self) -> bool {
-        if !self.scriptable {
-            return false;
-        }
-        if self.checked.is_none_or(|t| t.elapsed() > VOICEOVER_CHECK) {
-            self.running = Process::new("/usr/bin/pgrep")
-                .args(["-x", "VoiceOver"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|s| s.success());
-            self.checked = Some(Instant::now());
-        }
-        self.running
-    }
-
-    /// Speaks (interrupting VoiceOver's current speech). Returns false if VoiceOver refused.
-    fn output(&mut self, text: &str) -> bool {
-        // The text is passed as an argument, so it needs no AppleScript escaping.
-        let ok = Process::new(OSASCRIPT)
-            .args([
-                "-e",
-                "on run argv",
-                "-e",
-                "tell application id \"com.apple.VoiceOver\" to output (item 1 of argv)",
-                "-e",
-                "end run",
-                "--",
-                text,
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success());
-        if !ok {
-            self.scriptable = false;
-            eprintln!(
-                "audio-code: VoiceOver refused AppleScript; using the system voice. To speak through \
-                 VoiceOver, check \"Allow VoiceOver to be controlled with AppleScript\" in VoiceOver Utility."
-            );
-        }
-        ok
-    }
-}
-
-/// Runs the macOS output until the channel closes. Fails if `say` is missing.
-pub(super) fn run(rx: &Receiver<Command>, shared: &Shared) -> Result<(), String> {
-    if !Path::new(SAY).is_file() {
-        return Err(format!("{SAY} not found"));
-    }
-    let mut voiceover = VoiceOver::new();
-    let mut say = Say::default();
-    let mut backend = if voiceover.active() { VOICEOVER } else { SYSTEM_VOICE };
-    shared.set_backend(backend.into());
-    loop {
-        let cmd = if say.busy() {
-            match rx.recv_timeout(POLL) {
-                Ok(cmd) => cmd,
-                Err(RecvTimeoutError::Timeout) => {
-                    say.poll();
-                    continue;
-                }
-                Err(RecvTimeoutError::Disconnected) => break,
-            }
-        } else {
-            match rx.recv() {
-                Ok(cmd) => cmd,
-                Err(_) => break,
-            }
-        };
-        let name = match cmd {
+    fn handle(&mut self, mtm: MainThreadMarker, cmd: Command, shared: &Shared) {
+        match cmd {
             Command::Speak { text, interrupt } => {
-                if voiceover.active() && voiceover.output(&text) {
-                    say.stop();
-                    VOICEOVER
+                if voiceover_running() {
+                    // Do not talk over VoiceOver if it was just turned on.
+                    self.stop();
+                    announce(mtm, &text, interrupt);
+                    self.set_backend(VOICEOVER, shared);
                 } else {
-                    say.speak(text, interrupt);
-                    SYSTEM_VOICE
+                    self.speak(&text, interrupt);
+                    self.set_backend(SYSTEM_VOICE, shared);
                 }
             }
-            Command::Stop => {
-                say.stop();
-                continue;
-            }
-            Command::Rate(rate) => {
-                say.rate = Some(words_per_minute(rate));
-                continue;
-            }
-            Command::Volume(volume) => {
-                say.volume = Some(volume);
-                continue;
-            }
-            // Neither VoiceOver's AppleScript nor `say` can write to a braille display.
-            Command::Braille(_) => continue,
-        };
-        if name != backend {
-            backend = name;
+            Command::Stop => self.stop(),
+            // VoiceOver keeps the user's own rate and volume, like NVDA.
+            Command::Rate(rate) => self.rate = Some(rate),
+            Command::Volume(volume) => self.volume = Some(volume),
+            // Announcements are always spoken as well, so there is no braille-only output.
+            Command::Braille(_) => {}
+        }
+    }
+
+    fn set_backend(&mut self, name: &'static str, shared: &Shared) {
+        if self.backend != name {
+            self.backend = name;
             shared.set_backend(name.into());
         }
     }
-    say.stop();
-    Ok(())
+
+    fn speak(&self, text: &str, interrupt: bool) {
+        // SAFETY: the synthesizer and utterance are valid objects used on the main thread, and
+        // the optional selector is only called after checking that it exists.
+        unsafe {
+            if interrupt {
+                self.synth.stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
+            }
+            let utterance = AVSpeechUtterance::speechUtteranceWithString(&NSString::from_str(text));
+            match self.rate {
+                // AVSpeech rates go from 0.0 to 1.0 with 0.5 as the default, just like ours.
+                Some(rate) => utterance.setRate(rate),
+                // macOS 14+: use the voice and rate from System Settings > Accessibility >
+                // Spoken Content instead of the generic defaults.
+                None if utterance.respondsToSelector(sel!(setPrefersAssistiveTechnologySettings:)) => {
+                    utterance.setPrefersAssistiveTechnologySettings(true);
+                }
+                None => {}
+            }
+            if let Some(volume) = self.volume {
+                utterance.setVolume(volume);
+            }
+            // The synthesizer queues utterances itself, so `speak_queued` needs no extra work.
+            self.synth.speakUtterance(&utterance);
+        }
+    }
+
+    fn stop(&self) {
+        // SAFETY: valid synthesizer, main thread.
+        unsafe {
+            self.synth.stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
+        }
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn voiceover_running() -> bool {
+    NSWorkspace::sharedWorkspace().isVoiceOverEnabled()
+}
 
-    #[test]
-    fn rate_mapping() {
-        assert_eq!(words_per_minute(0.0), 80);
-        assert_eq!(words_per_minute(0.5), 180);
-        assert_eq!(words_per_minute(1.0), 500);
+/// Asks VoiceOver to speak `text`. High priority interrupts the current speech, medium waits
+/// for it (the same mapping browsers use for assertive and polite live regions).
+fn announce(mtm: MainThreadMarker, text: &str, interrupt: bool) {
+    let priority = if interrupt { NSAccessibilityPriorityLevel::High } else { NSAccessibilityPriorityLevel::Medium };
+    let text = NSString::from_str(text);
+    let priority = NSNumber::new_isize(priority.0);
+    // SAFETY: the keys and the notification name are constant strings exported by AppKit.
+    let (announcement_key, priority_key, notification) =
+        unsafe { (NSAccessibilityAnnouncementKey, NSAccessibilityPriorityKey, NSAccessibilityAnnouncementRequestedNotification) };
+    let objects: [&AnyObject; 2] = [text.as_ref(), priority.as_ref()];
+    let info = NSDictionary::from_slices(&[announcement_key, priority_key], &objects);
+    // VoiceOver ignores announcements from inactive windows, so post them on the key window
+    // when there is one, and on the application otherwise.
+    let app = NSApplication::sharedApplication(mtm);
+    let window = app.keyWindow();
+    let element: &AnyObject = match &window {
+        Some(window) => window.as_ref(),
+        None => app.as_ref(),
+    };
+    // SAFETY: valid element, notification name and user info with the documented keys.
+    unsafe { NSAccessibilityPostNotificationWithUserInfo(element, notification, Some(&info)) };
+}
+
+/// Runs a command on the main thread.
+fn on_main(cmd: Command, shared: &Arc<Shared>) {
+    let shared = shared.clone();
+    DispatchQueue::main().exec_async(move || {
+        let Some(mtm) = MainThreadMarker::new() else { return };
+        OUTPUT.with_borrow_mut(|output| output.get_or_insert_with(Output::new).handle(mtm, cmd, &shared));
+    });
+}
+
+/// Forwards commands to the main thread until the channel closes. Fails if AVSpeechSynthesizer
+/// is missing (macOS before 10.14).
+pub(super) fn run(rx: &Receiver<Command>, shared: &Arc<Shared>) -> Result<(), String> {
+    if AnyClass::get(c"AVSpeechSynthesizer").is_none() {
+        return Err("AVSpeechSynthesizer is not available (needs macOS 10.14 or newer)".into());
     }
+    // Creates the synthesizer early, so the first message is not delayed.
+    on_main(Command::Stop, shared);
+    for cmd in rx {
+        on_main(cmd, shared);
+    }
+    on_main(Command::Stop, shared);
+    Ok(())
 }

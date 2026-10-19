@@ -7,8 +7,8 @@
 //!    (SAPI / OneCore, AVSpeech, speech-dispatcher, ...).
 //! 2. **NVDA controller client** (Windows, feature `nvda`). Loads `nvdaControllerClient.dll`
 //!    at runtime and speaks through NVDA. See [`Engine::nvda_dll`](crate::Engine::nvda_dll).
-//! 3. **VoiceOver or the system voice** (macOS, feature `macos`). Speaks through VoiceOver when
-//!    it runs and allows AppleScript control, otherwise through the `say` command.
+//! 3. **VoiceOver or the system voice** (macOS, feature `macos`). Speaks through VoiceOver
+//!    announcements when VoiceOver is on, otherwise through `AVSpeechSynthesizer`.
 //! 4. **The console.** Everything is printed, so the game always keeps working.
 //!
 //! Speech runs on its own thread, so speaking never blocks your game loop.
@@ -170,8 +170,8 @@ impl Speech {
         self.muted = muted;
     }
 
-    /// Name of the active output, e.g. "NVDA", "SAPI", "NVDA (controller client)" or
-    /// "VoiceOver (AppleScript)".
+    /// Name of the active output, e.g. "NVDA", "SAPI", "NVDA (controller client)",
+    /// "VoiceOver" or "AVSpeechSynthesizer".
     /// `None` while starting up or when printing to the console.
     pub fn backend_name(&self) -> Option<String> {
         self.shared.backend.lock().unwrap_or_else(|e| e.into_inner()).clone()

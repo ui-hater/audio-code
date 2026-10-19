@@ -82,19 +82,25 @@ instead. NVDA keeps the user's own rate and volume, so `set_rate` and `set_volum
 
 ### macOS: VoiceOver and the system voice
 
-On macOS the default build speaks without prism and without any extra library (feature
-`macos`, on by default):
+On macOS the default build speaks through Apple's own APIs, without prism (feature `macos`,
+on by default):
 
-- If **VoiceOver** is running, messages go to VoiceOver through AppleScript, so players hear
-  their own VoiceOver voice and settings. For this, the player must check *Allow VoiceOver to
-  be controlled with AppleScript* in VoiceOver Utility (General). The first time, macOS may
-  also ask whether the game (or the terminal) may control VoiceOver.
-- Otherwise, or if VoiceOver refuses AppleScript, the **system voice** speaks through the
-  `say` command. `set_rate` (0.5 is a normal rate) and `set_volume` work here.
+- When **VoiceOver** is on, every message is sent to VoiceOver as an accessibility
+  announcement. Players hear their own VoiceOver voice, rate and verbosity, and braille
+  displays show the text too. No setup is needed.
+- Otherwise the **system voice** speaks through `AVSpeechSynthesizer`. It uses the voice and
+  rate from *System Settings → Accessibility → Spoken Content* (macOS 14 and newer) until the
+  game calls `set_rate`. `set_rate` (0.5 is normal) and `set_volume` work here, and
+  `speak_queued` waits for the current message.
 
-VoiceOver is checked every few seconds, so turning it on or off while the game runs works.
-VoiceOver has no queue, so `speak_queued` interrupts there like `speak`, and `stop` does
-nothing. Braille is not supported by this output; use prism for braille on macOS.
+The engine checks for VoiceOver on every message, so turning it on or off while the game
+runs works. With VoiceOver, `speak` interrupts and `speak_queued` is sent as a lower priority
+announcement; VoiceOver decides when that is spoken and may skip it when many messages
+arrive at once. VoiceOver has no "stop" for announcements, so `stop` only silences the system
+voice. Braille-only output (`braille`) needs prism on macOS.
+
+AppKit only works on the main thread, so speech is handed to the main thread and spoken
+between frames. VoiceOver ignores announcements while the game window is not active.
 
 ### Console
 

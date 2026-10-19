@@ -113,7 +113,7 @@ ctx.speech.set_muted(true);
 ### `ctx.speech.backend_name() -> Option<String>`
 
 Name of the active output, for example `"NVDA"`, `"SAPI"`, `"NVDA (controller client)"`,
-`"VoiceOver (AppleScript)"` or `"macOS system voice (say)"`. `None` while starting up or when printing to the console.
+`"VoiceOver"` or `"AVSpeechSynthesizer"`. `None` while starting up or when printing to the console.
 
 ```rust
 if let Some(name) = ctx.speech.backend_name() {

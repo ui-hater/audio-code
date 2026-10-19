@@ -170,13 +170,16 @@ sample). `with` adds layers that are summed; `then` appends parts. `build()` ren
    Strings are sent as NUL-terminated UTF-16. "Interrupt" means `cancelSpeech` and then
    `speakText`. If NVDA is not running when a message arrives, the message is printed
    instead.
-3. `macos::run` (macOS): fail only if `/usr/bin/say` is missing. Per message, check (cached
-   for two seconds) whether VoiceOver runs with `pgrep -x VoiceOver`. If so, speak with
-   `osascript` (`tell application id "com.apple.VoiceOver" to output ...`, the text passed as
-   an argument so it needs no escaping). If VoiceOver refuses AppleScript once, use the system
-   voice from then on: one `say` process per message, killed on interrupt or `stop`. Queued
-   messages wait in a `VecDeque`, and while one plays the loop polls the channel with
-   `recv_timeout` to start the next as soon as the process exits.
+3. `macos::run` (macOS): fail only if the `AVSpeechSynthesizer` class is missing. AppKit is
+   main-thread only, so the speech thread just forwards each command with
+   `DispatchQueue::main().exec_async`; winit and wxWidgets drain the main queue between
+   frames. On the main thread a thread-local `Output` holds the synthesizer. For each message
+   it asks `NSWorkspace.isVoiceOverEnabled`: if true, it posts
+   `NSAccessibilityAnnouncementRequestedNotification` on the key window (or the application)
+   with priority High for interrupting and Medium for queued messages; otherwise it builds an
+   `AVSpeechUtterance` (interrupt = `stopSpeakingAtBoundary(Immediate)` first; the
+   synthesizer queues by itself). Without a game-set rate, the utterance uses the user's
+   Spoken Content settings (`prefersAssistiveTechnologySettings`, if the OS has it).
 4. Nothing works: print why, and drop the receiver.
 
 On the main thread, `Speech::send` notices a closed channel and switches to console output
