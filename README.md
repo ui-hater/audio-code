@@ -11,7 +11,7 @@ make the common things one line long:
 
 | Area | What you get |
 |------|--------------|
-| **Speech** | Output through the player's screen reader (NVDA, JAWS, VoiceOver, Orca, ...) or the system voice via [prism](https://github.com/ethindp/prism). NVDA's controller client is a fallback on Windows, and the console is the last resort. |
+| **Speech** | Output through the player's screen reader (NVDA, JAWS, VoiceOver, Orca, ...) or the system voice via [prism](https://github.com/ethindp/prism). VoiceOver or the system voice are a fallback on macOS, and the console is the last resort. |
 | **Sound** | One-line playback, 3D positioned sounds (left/right, front/back, above/below, a listener that can look up and down), loops, pitch, fades, music with cross fades, volume groups. Files are found and cached for you. |
 | **Synth** | Design clicks, beeps and effects in code. You do not need any sound files to start. |
 | **Virtual UI** | Spoken menus with buttons, sliders, checkboxes, choices and text fields, plus message boxes, yes/no questions and text input. Keyboard only, with replaceable interface sounds. |
@@ -317,21 +317,12 @@ crashes the game. Sounds made in code are registered under a name with
 audio-code = { git = "https://github.com/<you>/audio-code" }
 ```
 
-The default build is pure Rust. On Windows it speaks through NVDA's controller client DLL
-(the `nvda` feature): put `nvdaControllerClient.dll` (from the NVDA controller client
-download) next to your game's `.exe`. Details are in
-[docs/speech.md](docs/speech.md#nvda-controller-client). On macOS it speaks through VoiceOver
-or the system voice (the `macos` feature), see
+Speech goes through [prism](https://github.com/ethindp/prism) (the `prism` feature, on by
+default), which talks to every common screen reader and the system voice. On macOS, VoiceOver
+or the system voice are the fallback (the `macos` feature), see
 [docs/speech.md](docs/speech.md#macos-voiceover-and-the-system-voice).
 
-### With prism
-
-For speech through every common screen reader and the system voice, turn on the optional
-`prism` feature:
-
-```toml
-audio-code = { git = "...", features = ["prism"] }
-```
+### Building prism
 
 prism is a C++ library that is compiled automatically during the first build. For that you
 need **CMake 3.24+** and a **C++23 compiler**:
@@ -342,12 +333,23 @@ need **CMake 3.24+** and a **C++23 compiler**:
 | Linux | `pkg-config`, `libasound2-dev` (audio), and for speech glibmm 2.68+ (`libglibmm-2.68-dev`) and speech-dispatcher 0.11.1+ (`libspeechd-dev`). See the [prism README](https://github.com/ethindp/prism). |
 | macOS | Xcode command line tools |
 
+prism is linked dynamically. The build copies `prism.dll` (`libprism.so` / `libprism.dylib`
+on Linux / macOS) next to your executables in `target/debug` or `target/release`. **Ship that
+file next to your game's `.exe`**: the game does not start without it.
+
+To build without prism and without a C++ toolchain, turn off the default features:
+
+```toml
+audio-code = { git = "...", default-features = false, features = ["macos"] }
+```
+
+Speech is then printed to the console (or goes to VoiceOver / the system voice on macOS).
+
 ### Feature flags
 
 | Feature    | Default | What it does |
 |------------|---------|--------------|
-| `prism`    | no      | Speech and braille through screen readers and system voices. |
-| `nvda`     | yes     | Windows: speech through `nvdaControllerClient.dll` when prism is unavailable. |
+| `prism`    | yes     | Speech and braille through screen readers and system voices. |
 | `macos`    | yes     | macOS: speech through VoiceOver announcements or the system voice (`AVSpeechSynthesizer`) when prism is unavailable. |
 | `wxdragon` | no      | `Engine::run_wx` and `audio_code::wx` for native wxWidgets windows. |
 
@@ -395,7 +397,6 @@ src/
 │   └── synth.rs    the synthesizer
 ├── speech/
 │   ├── mod.rs      Speech (public API), the speech thread and its fallback chain
-│   ├── nvda.rs     NVDA controller client, loaded at runtime (Windows)
 │   └── macos.rs    VoiceOver announcements and AVSpeechSynthesizer (macOS)
 ├── bundle.rs       finding files and the save folder inside a macOS .app
 ├── ui/
@@ -421,7 +422,7 @@ deal with locks or channels yourself.
 ```text
  main thread                         audio thread (cpal)            speech thread
  ───────────                         ───────────────────            ─────────────
- window events ──► Runner            Mixer                          prism / NVDA / macOS / console
+ window events ──► Runner            Mixer                          prism / macOS / console
                      │                 ▲  drains commands              ▲
                      ▼                 │  each audio block             │ Speak, Stop, ...
    your Scene ◄──► Context ── Audio ───┘ (channel)                     │
@@ -450,8 +451,7 @@ Music is decoded on a background thread. Its voice already exists and simply sta
 until the data is ready, so starting music never makes the game stutter.
 
 **Speech.** `ctx.speech.speak` puts the text into a channel and returns immediately. The
-speech thread tries prism first, then the NVDA controller client (Windows) or VoiceOver and
-the system voice (macOS), and uses the first that works. If none works, the thread ends, and `Speech` notices the closed channel and prints
+speech thread tries prism first, then VoiceOver and the system voice (macOS), and uses the first that works. If none works, the thread ends, and `Speech` notices the closed channel and prints
 to the console from then on. A history of the last 100 messages stays on the main thread,
 which is what makes `repeat_last` possible.
 
@@ -490,8 +490,7 @@ cargo clippy --all-targets --features wxdragon
 cargo doc --open                             # API reference
 ```
 
-Without the ATL component on Windows, add `--no-default-features --features nvda` to every
-command. Tests never open a window or an audio device: they use `Engine::headless()`, which
+Without the ATL component on Windows, add `--no-default-features` to every command. Tests never open a window or an audio device: they use `Engine::headless()`, which
 gives silent audio and console speech, and drive frames by hand with `Runner::frame()`.
 
 ## Documentation
@@ -499,7 +498,7 @@ gives silent audio and console speech, and drive frames by hand with `Runner::fr
 - [Cheat sheet](docs/cheatsheet.md): the most used calls on one page
 - [Getting started](docs/getting-started.md): your first game, step by step
 - [Sound](docs/audio.md): playing, positioning, music, the synth, file lookup
-- [Speech](docs/speech.md): screen readers, NVDA fallback, voices, history, braille
+- [Speech](docs/speech.md): screen readers, fallbacks, voices, history, braille
 - [macOS](docs/macos.md): speech on the Mac and shipping your game as a `.app`
 - [Virtual UI](docs/ui.md): menus, dialogs, text input, custom click sounds, custom widgets
 - [Physics](docs/physics.md): bodies, gravity, jumping, events, levels from text maps

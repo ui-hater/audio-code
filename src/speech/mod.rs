@@ -2,14 +2,12 @@
 //!
 //! The engine tries these outputs in order and uses the first one that works:
 //!
-//! 1. **[prism](https://github.com/ethindp/prism)** (feature `prism`). It talks to the running
-//!    screen reader (NVDA, JAWS, VoiceOver, Orca, ...) or falls back to the system voice
-//!    (SAPI / OneCore, AVSpeech, speech-dispatcher, ...).
-//! 2. **NVDA controller client** (Windows, feature `nvda`). Loads `nvdaControllerClient.dll`
-//!    at runtime and speaks through NVDA. See [`Engine::nvda_dll`](crate::Engine::nvda_dll).
-//! 3. **VoiceOver or the system voice** (macOS, feature `macos`). Speaks through VoiceOver
+//! 1. **[prism](https://github.com/ethindp/prism)** (feature `prism`, on by default). It talks
+//!    to the running screen reader (NVDA, JAWS, VoiceOver, Orca, ...) or falls back to the
+//!    system voice (SAPI / OneCore, AVSpeech, speech-dispatcher, ...).
+//! 2. **VoiceOver or the system voice** (macOS, feature `macos`). Speaks through VoiceOver
 //!    announcements when VoiceOver is on, otherwise through `AVSpeechSynthesizer`.
-//! 4. **The console.** Everything is printed, so the game always keeps working.
+//! 3. **The console.** Everything is printed, so the game always keeps working.
 //!
 //! Speech runs on its own thread, so speaking never blocks your game loop.
 //!
@@ -18,10 +16,7 @@
 
 #[cfg(all(target_os = "macos", feature = "macos"))]
 mod macos;
-#[cfg(all(windows, feature = "nvda"))]
-mod nvda;
 
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Condvar, Mutex};
@@ -31,7 +26,7 @@ const HISTORY_LEN: usize = 100;
 /// How long [`Speech::voices`] waits for the output to start.
 const VOICES_TIMEOUT: Duration = Duration::from_secs(3);
 
-// Only prism uses every command (NVDA ignores rate and volume, macOS ignores braille).
+// Only prism uses every command (macOS ignores braille).
 #[cfg_attr(not(feature = "prism"), allow(dead_code))]
 enum Command {
     Speak { text: String, interrupt: bool },
@@ -75,7 +70,7 @@ struct Shared {
 }
 
 impl Shared {
-    #[cfg_attr(not(any(feature = "prism", all(windows, feature = "nvda"), all(target_os = "macos", feature = "macos"))), allow(dead_code))]
+    #[cfg_attr(not(any(feature = "prism", all(target_os = "macos", feature = "macos"))), allow(dead_code))]
     fn set_backend(&self, name: String) {
         *self.backend.lock().unwrap_or_else(|e| e.into_inner()) = Some(name);
     }
@@ -98,10 +93,10 @@ pub struct Speech {
 }
 
 impl Speech {
-    pub(crate) fn new(echo: bool, nvda_dll: Option<PathBuf>) -> Self {
+    pub(crate) fn new(echo: bool) -> Self {
         let shared = Arc::new(Shared::default());
         shared.echo.store(echo, Ordering::Relaxed);
-        let tx = spawn(shared.clone(), nvda_dll);
+        let tx = spawn(shared.clone());
         if tx.is_none() {
             shared.set_voices(Vec::new());
         }
@@ -275,8 +270,7 @@ impl Speech {
         self.muted = muted;
     }
 
-    /// Name of the active output, e.g. "NVDA", "SAPI", "NVDA (controller client)",
-    /// "VoiceOver" or "AVSpeechSynthesizer".
+    /// Name of the active output, e.g. "NVDA", "SAPI", "VoiceOver" or "AVSpeechSynthesizer".
     /// `None` while starting up or when printing to the console.
     pub fn backend_name(&self) -> Option<String> {
         self.shared.backend.lock().unwrap_or_else(|e| e.into_inner()).clone()
@@ -284,26 +278,19 @@ impl Speech {
 }
 
 /// Starts the output thread, or returns `None` if no output is compiled in.
-#[cfg_attr(not(all(windows, feature = "nvda")), allow(unused_variables))]
-fn spawn(shared: Arc<Shared>, nvda_dll: Option<PathBuf>) -> Option<Sender<Command>> {
-    if !cfg!(any(feature = "prism", all(windows, feature = "nvda"), all(target_os = "macos", feature = "macos"))) {
+fn spawn(shared: Arc<Shared>) -> Option<Sender<Command>> {
+    if !cfg!(any(feature = "prism", all(target_os = "macos", feature = "macos"))) {
         return None;
     }
     let (tx, rx) = channel::<Command>();
     let spawned = std::thread::Builder::new().name("audio-code speech".into()).spawn(move || {
-        #[cfg_attr(not(any(feature = "prism", all(windows, feature = "nvda"), all(target_os = "macos", feature = "macos"))), allow(unused_mut))]
+        #[cfg_attr(not(any(feature = "prism", all(target_os = "macos", feature = "macos"))), allow(unused_mut))]
         let mut reasons: Vec<String> = Vec::new();
 
         #[cfg(feature = "prism")]
         match run_prism(&rx, &shared) {
             Ok(()) => return,
             Err(e) => reasons.push(format!("prism: {e}")),
-        }
-
-        #[cfg(all(windows, feature = "nvda"))]
-        match nvda::run(&rx, &shared, nvda_dll.as_deref()) {
-            Ok(()) => return,
-            Err(e) => reasons.push(format!("NVDA controller client: {e}")),
         }
 
         #[cfg(all(target_os = "macos", feature = "macos"))]
@@ -329,14 +316,17 @@ fn sort_voices(voices: &mut [Voice]) {
 /// Runs prism until the channel closes. Returns an error if prism has no usable output.
 #[cfg(feature = "prism")]
 fn run_prism(rx: &Receiver<Command>, shared: &Shared) -> Result<(), String> {
-    let prism = prismer::Prism::new().map_err(|e| format!("{e:?}"))?;
-    let backend = prism.create_best().map_err(|e| format!("{e:?}"))?;
-    shared.set_backend(backend.name());
-    let mut voices: Vec<Voice> = backend
-        .voices()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|v| Voice { id: v.id.to_string(), name: v.name, language: v.language })
+    // Declared before the backend, so the backend is dropped first.
+    let prism = prism::Context::new().map_err(|e| e.to_string())?;
+    let mut backend = prism.acquire_best().map_err(|e| e.to_string())?;
+    shared.set_backend(backend.name().unwrap_or_else(|_| "prism".into()));
+    let count = backend.voice_count().unwrap_or(0);
+    let mut voices: Vec<Voice> = (0..count)
+        .filter_map(|i| {
+            let name = backend.voice_name(i).ok()?;
+            let language = backend.voice_language(i).ok().filter(|l| !l.is_empty());
+            Some(Voice { id: i.to_string(), name, language })
+        })
         .collect();
     sort_voices(&mut voices);
     shared.set_voices(voices);

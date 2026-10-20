@@ -10,7 +10,7 @@ The design goal is simplicity for game developers. Common actions should be one-
 
 ## Build, test, lint
 
-On this Windows machine the optional `prism` feature **does not build**, because the Visual Studio "C++ ATL" component is missing (`atlbase.h` not found). Do not enable it; the default features (`nvda`) build fine:
+The default `prism` feature uses the bindings from `https://github.com/garo-pro/prism2rust` (git dependency; cargo checks out the prism submodule itself). Its native C++ build needs CMake and the Visual Studio "C++ ATL" component (installed here); the first build takes a few minutes. `PRISM_SYS_NO_NATIVE=1` skips the C++ build for quick clippy/check/doc runs (not for linking).
 
 ```sh
 cargo build
@@ -22,17 +22,17 @@ cargo run    --example menus      # hello, clicker, menus, beacon, bell_catcher,
 cargo run    --features wxdragon --example wx_game
 ```
 
-- Run clippy for each feature combination you touch: none, `nvda`, `wxdragon,nvda`. `cfg`-gated code easily produces dead-code or unused-mut warnings in one combination only.
+- prism is linked dynamically. `build.rs` copies `prism.dll` from prism-sys's install prefix (`DEP_PRISM_ROOT`, which is why `prism-sys` is a direct dependency) into `target/<profile>/`, `examples/` and `deps/`. Without it next to the exe, the exe does not start. Never commit the DLL.
+- Run clippy for each feature combination you touch: `--no-default-features`, default (`prism`), `wxdragon`. `cfg`-gated code easily produces dead-code or unused-mut warnings in one combination only.
 - Feature-gated items (`wx`, `Engine::run_wx`) must not be intra-doc linked from ungated docs. Write them as plain code text.
 - Examples open a real window and audio device and run until Escape. For smoke tests, build first and then run the exe with `timeout`, because linking inside `timeout cargo run` gets killed. The windows can steal keyboard focus from the user.
-- To get NVDA speech in the examples, `nvdaControllerClient64.dll` must sit next to the exe (`target/debug/examples/`). A copy exists at `%LOCALAPPDATA%\RemSound\`. Never commit the DLL.
-- macOS code (`src/speech/macos.rs`, feature `macos`) is checked from Windows with `cargo clippy --target aarch64-apple-darwin --all-targets` (targets are installed). A `.app` is built with `scripts/macos_app.py` via cargo-zigbuild (zig 0.13 from pip, `SDKROOT` pointing to a macOS SDK); see `docs/macos.md`. cargo-zigbuild leaves a `.intentionally-empty-file.o` in the repo root; delete it, never commit it.
+- macOS code (`src/speech/macos.rs`, feature `macos`) is checked from Windows with `PRISM_SYS_NO_NATIVE=1 cargo clippy --target aarch64-apple-darwin --all-targets` (targets are installed). A `.app` is built with `scripts/macos_app.py` via cargo-zigbuild (zig 0.13 from pip, `SDKROOT` pointing to a macOS SDK); see `docs/macos.md`. cargo-zigbuild leaves a `.intentionally-empty-file.o` in the repo root; delete it, never commit it.
 - Tests that need an engine use `Engine::new(..).headless().build(scene)`, which gives a silent audio system, console speech and no window, and drive it with `runner.frame()` / `runner.key_down(..)`. UI tests use the `Harness` in `src/ui/mod.rs`.
 
 ## Features
 
-- `prism` (optional): speech via the `prismer` crate. It builds prism C++ with CMake and links it statically.
-- `nvda` (default, Windows only): loads `nvdaControllerClient.dll` at runtime with `libloading`.
+- `prism` (default): speech via the `prism` crate from `garo-pro/prism2rust` (git dependency). Its `prism-sys` builds prism C++ with CMake as a shared library (`prism.dll`).
+- `macos` (default, macOS only): VoiceOver announcements or `AVSpeechSynthesizer` when prism is unavailable.
 - `wxdragon`: wxWidgets backend (`src/wx.rs`). The first build compiles wxWidgets and is slow.
 
 ## Architecture
@@ -55,7 +55,7 @@ cargo run    --features wxdragon --example wx_game
 - Name lookup: given path, then `sound_dir/name`, then common extensions. Results are cached by the name string. Generated sounds (`Synth`, `SoundData::generate`) are registered under a name with `Audio::register`.
 - If no device opens, the engine falls back to `Audio::silent`.
 
-**Speech** (`src/speech/`). One background thread tries prism (`run_prism`), then NVDA (`nvda::run`). If both fail, the thread drops the receiver, and `Speech::send` then sees the closed channel and switches to console echo. History and echo live on the game-thread side.
+**Speech** (`src/speech/`). One background thread tries prism (`run_prism`), then macOS (`macos::run`). If all fail, the thread drops the receiver, and `Speech::send` then sees the closed channel and switches to console echo. History and echo live on the game-thread side.
 
 **UI** (`src/ui/`):
 - A stack of `Box<dyn Widget>` (public trait, so users can write widgets).

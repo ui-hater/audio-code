@@ -3,9 +3,8 @@
 Screen reader and text-to-speech output: `ctx.speech` (type `Speech`). `ctx.speak(text)` is
 the shortcut for the most common call.
 
-The engine picks the first output that works: prism (feature `prism`, talks to NVDA, JAWS,
-VoiceOver, Orca or the system voice), then NVDA's controller client DLL (Windows, feature
-`nvda`, on by default, see `Engine::nvda_dll`), then VoiceOver or the system voice (macOS,
+The engine picks the first output that works: prism (feature `prism`, on by default, talks to
+NVDA, JAWS, VoiceOver, Orca or the system voice), then VoiceOver or the system voice (macOS,
 feature `macos`, on by default), then the console. Speech runs on its own
 thread and never blocks the game. Empty text is ignored. In headless mode
 (`Engine::headless`) everything is printed.
@@ -32,7 +31,7 @@ ctx.speech.speak_queued("Find the key.");
 ### `ctx.speech.braille(text: impl AsRef<str>)`
 
 Shows text on a braille display only, without speaking it. Needs an output that supports
-braille (prism or NVDA). Not added to the history.
+braille (prism). Not added to the history.
 
 ```rust
 ctx.speech.braille("HP 80/100");
@@ -172,8 +171,7 @@ ctx.speech.set_muted(true);
 
 ### `ctx.speech.backend_name() -> Option<String>`
 
-Name of the active output, for example `"NVDA"`, `"SAPI"`, `"NVDA (controller client)"`,
-`"VoiceOver"` or `"AVSpeechSynthesizer"`. `None` while starting up or when printing to the console.
+Name of the active output, for example `"NVDA"`, `"SAPI"`, `"VoiceOver"` or `"AVSpeechSynthesizer"`. `None` while starting up or when printing to the console.
 
 ```rust
 if let Some(name) = ctx.speech.backend_name() {

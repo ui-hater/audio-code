@@ -9,7 +9,7 @@ has the short version.
 ```text
  main thread                         audio thread (cpal)            speech thread
  ───────────                         ───────────────────            ─────────────
- window events ──► Runner            Mixer                          prism / NVDA / macOS / console
+ window events ──► Runner            Mixer                          prism / macOS / console
                      │                 ▲  drains commands              ▲
                      ▼                 │  each audio block             │ Speak, Stop, ...
    your Scene ◄──► Context ── Audio ───┘ (channel)                     │
@@ -168,14 +168,10 @@ sample). `with` adds layers that are summed; `then` appends parts. `build()` ren
 
 `Speech::new` spawns one thread and keeps the sender. The thread tries, in order:
 
-1. `run_prism`: create a prism context, pick the best backend, then loop over commands
-   until the channel closes.
-2. `nvda::run` (Windows): load `nvdaControllerClient.dll` with `libloading` and copy out four
-   function pointers (`testIfRunning`, `speakText`, `cancelSpeech`, `brailleMessage`).
-   Strings are sent as NUL-terminated UTF-16. "Interrupt" means `cancelSpeech` and then
-   `speakText`. If NVDA is not running when a message arrives, the message is printed
-   instead.
-3. `macos::run` (macOS): fail only if the `AVSpeechSynthesizer` class is missing. AppKit is
+1. `run_prism`: create a prism context, acquire the best available backend, publish its
+   voices (`voice_count`, `voice_name`, `voice_language`; the id is the index), then loop
+   over commands until the channel closes.
+2. `macos::run` (macOS): fail only if the `AVSpeechSynthesizer` class is missing. AppKit is
    main-thread only, so the speech thread just forwards each command with
    `DispatchQueue::main().exec_async`; winit and wxWidgets drain the main queue between
    frames. On the main thread a thread-local `Output` holds the synthesizer. For each message
@@ -185,7 +181,7 @@ sample). `with` adds layers that are summed; `then` appends parts. `build()` ren
    `AVSpeechUtterance` (interrupt = `stopSpeakingAtBoundary(Immediate)` first; the
    synthesizer queues by itself). Without a game-set rate, the utterance uses the user's
    Spoken Content settings (`prefersAssistiveTechnologySettings`, if the OS has it).
-4. Nothing works: print why, and drop the receiver.
+3. Nothing works: print why, and drop the receiver.
 
 Each output publishes its voice list into `Shared` (`Mutex<Option<Vec<Voice>>>` plus a
 `Condvar`) as soon as it starts, an empty list if it has no voices or fails. `Speech::voices`
@@ -200,7 +196,7 @@ for good. Messages sent while the thread is still starting are not lost, because
 the channel.
 
 History (100 messages), mute and echo live on the main thread. Echo is an `AtomicBool`
-shared with the thread, so the NVDA "not running" path does not print a message twice.
+shared with the thread.
 
 ## Virtual UI (`ui/`)
 

@@ -8,7 +8,7 @@ First version.
 - Audio: real-time mixer, 3D positioned sounds (panning, distance, muffling behind the
   listener), looping, pitch, fades, music with cross fades and background loading, volume
   groups, file lookup with caching, generated sounds
-- Speech via prism (optional `prism` feature) with console fallback, message history and braille
+- Speech via prism (`prism` feature, default on, uses the prism2rust bindings) with console fallback, message history and braille
 - Virtual UI: menus (buttons, checkboxes, sliders, choices, text fields, labels), messages,
   yes/no dialogs, text input, built-in interface sounds, custom widgets
 - Physics: boxes and spheres; fixed, dynamic, kinematic and sensor bodies; gravity,
@@ -16,8 +16,6 @@ First version.
 - Time: delta, time scale and pause, named scheduler, `Timer`, `Cooldown`, `Interval`
 - Input: pressed / held / released, custom key repeat, typed text, layout aware letters
 - winit window backend, optional wxDragon backend (`wxdragon` feature)
-- Speech fallback to NVDA's controller client DLL on Windows (`nvda` feature, default on),
-  `Engine::nvda_dll`
 - macOS support: speech through VoiceOver announcements or the system voice
   (`AVSpeechSynthesizer`) without prism (`macos` feature, default on)
 - Voices: `Speech::voices`, `set_voice`, `reset_voice`, `voice` and the `Voice` type

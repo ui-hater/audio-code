@@ -192,7 +192,6 @@ pub struct Engine {
     pub(crate) echo_speech: bool,
     pub(crate) window_size: (u32, u32),
     pub(crate) headless: bool,
-    pub(crate) nvda_dll: Option<PathBuf>,
     pub(crate) gravity: glam::Vec3,
     pub(crate) save_file: Option<PathBuf>,
     pub(crate) save_secret: Option<String>,
@@ -210,7 +209,6 @@ impl Engine {
             echo_speech: false,
             window_size: (640, 480),
             headless: false,
-            nvda_dll: None,
             gravity: glam::Vec3::ZERO,
             save_file: None,
             save_secret: None,
@@ -267,15 +265,6 @@ impl Engine {
     /// helpers can still find and focus it.
     pub fn window_size(mut self, width: u32, height: u32) -> Self {
         self.window_size = (width, height);
-        self
-    }
-
-    /// Where to find NVDA's controller client DLL, used for speech when prism is not
-    /// available (Windows, feature `nvda`). Accepts the DLL file or the folder containing it.
-    /// Without this, the folder of the executable, the working directory and the system
-    /// search path are tried.
-    pub fn nvda_dll(mut self, path: impl Into<PathBuf>) -> Self {
-        self.nvda_dll = Some(path.into());
         self
     }
 
@@ -434,7 +423,7 @@ impl Runner {
             } else {
                 Audio::new(config.sound_dir.clone())
             },
-            speech: if config.headless { Speech::console() } else { Speech::new(config.echo_speech, config.nvda_dll.clone()) },
+            speech: if config.headless { Speech::console() } else { Speech::new(config.echo_speech) },
             ui: Ui::default(),
             physics: {
                 let mut world = World::new();

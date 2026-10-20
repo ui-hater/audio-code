@@ -67,35 +67,18 @@ while developing.
 
 The engine uses the first output that works:
 
-1. **prism** (feature `prism`)
-2. **NVDA controller client** (Windows, feature `nvda`)
-3. **VoiceOver or the system voice** (macOS, feature `macos`)
-4. **the console**
+1. **prism** (feature `prism`, on by default)
+2. **VoiceOver or the system voice** (macOS, feature `macos`)
+3. **the console**
 
-`ctx.speech.backend_name()` tells you which one is active, e.g. `"NVDA (controller client)"`.
+`ctx.speech.backend_name()` tells you which one is active, e.g. `"NVDA"`.
 
-### NVDA controller client
-
-When prism is not compiled in or finds nothing, the engine loads NVDA's
-`nvdaControllerClient.dll` at runtime and speaks through NVDA directly. `nvda` is a default
-feature and `prism` is optional, so the default build needs no C++ toolchain.
-
-The DLL is not part of this crate. Get it from the NVDA download page ("controller
-client") and put it **next to your game's executable**. 64-bit games need the 64-bit DLL. Both
-the new name `nvdaControllerClient.dll` and the old names `nvdaControllerClient64.dll` /
-`nvdaControllerClient32.dll` are found. The DLL is licensed under the LGPL 2.1, so check that
-license before you ship it.
-
-The engine looks in this order:
-
-1. the path given with `Engine::new("..").nvda_dll("libs/nvdaControllerClient.dll")` (a file
-   or a folder)
-2. the folder of the executable
-3. the working directory
-4. the normal Windows DLL search path
-
-If NVDA is not running when a message is spoken, the message is printed to the console
-instead. NVDA keeps the user's own rate and volume, so `set_rate` and `set_volume` do nothing.
+prism picks the best output that is available right now: a running screen reader (NVDA,
+JAWS, ZoomText, ...) first, otherwise the system voice (SAPI / OneCore on Windows). Screen
+readers keep the user's own rate and volume, so `set_rate` and `set_volume` only affect the
+system voice. Building prism needs CMake and a C++ compiler, see the README. Ship `prism.dll` (copied to
+`target/<profile>/` by the build) next to your game's executable. Without the
+`prism` feature the build is pure Rust.
 
 ### macOS: VoiceOver and the system voice
 

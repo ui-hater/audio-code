@@ -137,17 +137,6 @@ receives keyboard input and can be found and focused.
 let engine = Engine::new("Game").window_size(800, 600);
 ```
 
-### `engine.nvda_dll(path: impl Into<PathBuf>) -> Engine`
-
-Where to find `nvdaControllerClient.dll` (or `nvdaControllerClient64.dll`), used for speech
-on Windows when prism is not available (feature `nvda`, on by default). Accepts the DLL
-file or the folder containing it. Without it, the folder of the executable, the working
-directory and the system search path are tried.
-
-```rust
-let engine = Engine::new("Game").nvda_dll("lib/nvdaControllerClient64.dll");
-```
-
 ### `engine.headless() -> Engine`
 
 No audio device (silent `Audio`), speech printed to the console, storage kept in memory.
