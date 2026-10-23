@@ -8,7 +8,7 @@ First version.
 - Audio: real-time mixer, 3D positioned sounds (panning, distance, muffling behind the
   listener), looping, pitch, fades, music with cross fades and background loading, volume
   groups, file lookup with caching, generated sounds
-- Speech via prism (`prism` feature, default on, uses the prism2rust bindings) with console fallback, message history and braille
+- Speech via prism (`prism` feature, default on, uses the `prismer` bindings, linked statically) with console fallback, message history and braille
 - Virtual UI: menus (buttons, checkboxes, sliders, choices, text fields, labels), messages,
   yes/no dialogs, text input, built-in interface sounds, custom widgets
 - Physics: boxes and spheres; fixed, dynamic, kinematic and sensor bodies; gravity,

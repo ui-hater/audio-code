@@ -8,7 +8,7 @@ level editors and settings windows.
 Enable the feature:
 
 ```toml
-audio-code = { git = "...", features = ["wxdragon"] }
+audio-code = { version = "0.1", features = ["wxdragon"] }
 wxdragon = "0.9"   # only needed if you use wx widgets yourself
 ```
 

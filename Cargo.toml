@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "A simple, high level game engine for audio games: 3D sound, speech, virtual menus, physics and timing. No graphics required."
 license = "MIT"
+repository = "https://github.com/ui-hater/audio-code"
 readme = "README.md"
 keywords = ["audiogame", "accessibility", "gamedev", "audio", "screen-reader"]
 categories = ["game-engines", "accessibility", "multimedia::audio"]
@@ -11,7 +12,7 @@ categories = ["game-engines", "accessibility", "multimedia::audio"]
 [features]
 default = ["prism", "macos"]
 ## Speech and braille output through screen readers / TTS via the prism library (needs CMake and a C++23 compiler).
-prism = ["dep:prism", "dep:prism-sys"]
+prism = ["dep:prismer"]
 ## macOS only: speak through VoiceOver (accessibility announcements) or the system voice
 ## (AVSpeechSynthesizer) when prism is unavailable.
 macos = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit", "dep:objc2-avf-audio", "dep:dispatch2"]
@@ -24,9 +25,8 @@ cpal = "0.18.2"
 fastrand = "2.5.0"
 getrandom = "0.4"
 glam = "0.34.1"
-prism = { git = "https://github.com/garo-pro/prism2rust", version = "0.18.3", optional = true }
-# Only for build.rs: gives it DEP_PRISM_ROOT, the folder with the built prism library.
-prism-sys = { git = "https://github.com/garo-pro/prism2rust", version = "0.18.3", optional = true }
+# Linked statically, so games need no prism library next to the executable.
+prismer = { version = "0.1.4", features = ["static"], optional = true }
 sha2 = "0.11"
 symphonia = { version = "0.6.1", features = ["all"] }
 winit = "0.30.13"

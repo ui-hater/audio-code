@@ -317,9 +317,9 @@ fn sort_voices(voices: &mut [Voice]) {
 #[cfg(feature = "prism")]
 fn run_prism(rx: &Receiver<Command>, shared: &Shared) -> Result<(), String> {
     // Declared before the backend, so the backend is dropped first.
-    let prism = prism::Context::new().map_err(|e| e.to_string())?;
-    let mut backend = prism.acquire_best().map_err(|e| e.to_string())?;
-    shared.set_backend(backend.name().unwrap_or_else(|_| "prism".into()));
+    let prism = prismer::Prism::new().map_err(|e| e.to_string())?;
+    let backend = prism.acquire_best().map_err(|e| e.to_string())?;
+    shared.set_backend(backend.name());
     let count = backend.voice_count().unwrap_or(0);
     let mut voices: Vec<Voice> = (0..count)
         .filter_map(|i| {

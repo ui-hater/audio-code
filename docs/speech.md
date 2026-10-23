@@ -76,9 +76,9 @@ The engine uses the first output that works:
 prism picks the best output that is available right now: a running screen reader (NVDA,
 JAWS, ZoomText, ...) first, otherwise the system voice (SAPI / OneCore on Windows). Screen
 readers keep the user's own rate and volume, so `set_rate` and `set_volume` only affect the
-system voice. Building prism needs CMake and a C++ compiler, see the README. Ship `prism.dll` (copied to
-`target/<profile>/` by the build) next to your game's executable. Without the
-`prism` feature the build is pure Rust.
+system voice. Building prism needs CMake and a C++ compiler, see the README. prism is linked
+statically, so there is no extra library to ship. Without the `prism` feature the build is
+pure Rust.
 
 ### macOS: VoiceOver and the system voice
 

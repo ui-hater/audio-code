@@ -314,7 +314,7 @@ crashes the game. Sounds made in code are registered under a name with
 
 ```toml
 [dependencies]
-audio-code = { git = "https://github.com/<you>/audio-code" }
+audio-code = "0.1"
 ```
 
 Speech goes through [prism](https://github.com/ethindp/prism) (the `prism` feature, on by
@@ -333,14 +333,12 @@ need **CMake 3.24+** and a **C++23 compiler**:
 | Linux | `pkg-config`, `libasound2-dev` (audio), and for speech glibmm 2.68+ (`libglibmm-2.68-dev`) and speech-dispatcher 0.11.1+ (`libspeechd-dev`). See the [prism README](https://github.com/ethindp/prism). |
 | macOS | Xcode command line tools |
 
-prism is linked dynamically. The build copies `prism.dll` (`libprism.so` / `libprism.dylib`
-on Linux / macOS) next to your executables in `target/debug` or `target/release`. **Ship that
-file next to your game's `.exe`**: the game does not start without it.
+prism is linked statically into your executable, so there is no extra library to ship.
 
 To build without prism and without a C++ toolchain, turn off the default features:
 
 ```toml
-audio-code = { git = "...", default-features = false, features = ["macos"] }
+audio-code = { version = "0.1", default-features = false, features = ["macos"] }
 ```
 
 Speech is then printed to the console (or goes to VoiceOver / the system voice on macOS).

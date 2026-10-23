@@ -141,8 +141,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-avf-audio",
  "objc2-foundation 0.3.2",
- "prism",
- "prism-sys",
+ "prismer",
  "sha2",
  "symphonia",
  "winit",
@@ -1795,31 +1794,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "prism"
-version = "0.18.3"
-source = "git+https://github.com/garo-pro/prism2rust#11ca9d8c75ae58819f035cef61e70db6bc1f94ab"
-dependencies = [
- "libc",
- "prism-sys",
- "prism-types",
-]
-
-[[package]]
 name = "prism-sys"
-version = "0.18.3"
-source = "git+https://github.com/garo-pro/prism2rust#11ca9d8c75ae58819f035cef61e70db6bc1f94ab"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9056b582fac161198bd0ce7dd84424e5c287495ab3cbfb1dc106553bcd2ea4c9"
 dependencies = [
  "cmake",
- "libc",
- "pkg-config",
 ]
 
 [[package]]
-name = "prism-types"
-version = "0.18.3"
-source = "git+https://github.com/garo-pro/prism2rust#11ca9d8c75ae58819f035cef61e70db6bc1f94ab"
+name = "prismer"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fab1f6ae95403371691d7ea661c98a4811613cdc3cbb45a35b774386a6ffa78"
 dependencies = [
- "bitflags 2.13.2",
+ "prism-sys",
 ]
 
 [[package]]
