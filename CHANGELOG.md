@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- prism is no longer linked statically. It is built as a shared library, so games ship
+  `prism.dll` (Linux: `libprism.so`, macOS: `libprism.dylib`) next to the executable.
+
 ## 0.2.0
 
 - Translations (`audio_code::lang`, `ctx.lang`): one `lang/<code>.txt` file per language

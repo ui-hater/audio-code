@@ -335,7 +335,7 @@ need **CMake 3.24+** and a **C++23 compiler**:
 | Linux | `pkg-config`, `libasound2-dev` (audio), and for speech glibmm 2.68+ (`libglibmm-2.68-dev`) and speech-dispatcher 0.11.1+ (`libspeechd-dev`). See the [prism README](https://github.com/ethindp/prism). |
 | macOS | Xcode command line tools |
 
-prism is linked statically into your executable, so there is no extra library to ship.
+prism is built as a shared library, so ship `prism.dll` (Linux: `libprism.so`, macOS: `libprism.dylib`) next to your executable.
 
 To build without prism and without a C++ toolchain, turn off the default features:
 

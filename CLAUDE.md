@@ -22,7 +22,7 @@ cargo run    --example menus      # hello, clicker, menus, beacon, bell_catcher,
 cargo run    --features wxdragon --example wx_game
 ```
 
-- prism is linked statically (prismer's `static` feature), so executables need no `prism.dll`.
+- prism is linked dynamically (prismer without its `static` feature), so executables need `prism.dll` next to them.
 - Run clippy for each feature combination you touch: `--no-default-features`, default (`prism`), `wxdragon`. `cfg`-gated code easily produces dead-code or unused-mut warnings in one combination only.
 - Feature-gated items (`wx`, `Engine::run_wx`) must not be intra-doc linked from ungated docs. Write them as plain code text.
 - Examples open a real window and audio device and run until Escape. For smoke tests, build first and then run the exe with `timeout`, because linking inside `timeout cargo run` gets killed. The windows can steal keyboard focus from the user.
@@ -31,7 +31,7 @@ cargo run    --features wxdragon --example wx_game
 
 ## Features
 
-- `prism` (default): speech via the `prismer` crate. Its `prism-sys` builds prism C++ with CMake as a static library.
+- `prism` (default): speech via the `prismer` crate. Its `prism-sys` builds prism C++ with CMake as a shared library.
 - `macos` (default, macOS only): VoiceOver announcements or `AVSpeechSynthesizer` when prism is unavailable.
 - `wxdragon`: wxWidgets backend (`src/wx.rs`). The first build compiles wxWidgets and is slow.
 
