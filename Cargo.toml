@@ -1,6 +1,6 @@
 [package]
 name = "audio-code"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A simple, high level game engine for audio games: 3D sound, speech, virtual menus, physics and timing. No graphics required."
 license = "MIT"
@@ -28,6 +28,7 @@ glam = "0.34.1"
 # Linked statically, so games need no prism library next to the executable.
 prismer = { version = "0.1.4", features = ["static"], optional = true }
 sha2 = "0.11"
+sys-locale = "0.3.2"
 symphonia = { version = "0.6.1", features = ["all"] }
 winit = "0.30.13"
 wxdragon = { version = "0.9.23", optional = true }

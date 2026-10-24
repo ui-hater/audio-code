@@ -41,7 +41,8 @@ reached through channels. No game code ever holds a lock.
    bodies through walls. The scheduler fires named events here.
 3. `input.begin_frame(now)` turns the queued key events into this frame's
    pressed/released/held sets.
-4. `ui.update(...)` runs the top widget. If a widget is open, `input` is set to *blocked*.
+4. `ui.update(...)` runs the top widget (it gets `&ctx.lang` for its own texts). If a
+   widget is open, `input` is set to *blocked*.
 5. Each UI event is given to `Scene::on_ui`.
 6. `physics.clear_events()`, then physics steps at a fixed rate with an accumulator (at most
    8 steps per frame, so a slow machine cannot spiral). `fixed_update` runs after each step.
@@ -349,6 +350,29 @@ sound. `sync_vehicles` (once per frame, from `Runner::frame`, not from `follow`)
 loop when the engine runs, sets its position, pitch (`engine_pitch`) and volume, fades it
 out when the engine stops or the body is removed, and plays shift and crash sounds for this
 frame's events.
+
+## Translations (`lang.rs`)
+
+`Lang` keeps one `HashMap<key, text>` per language code in a `BTreeMap` (sorted, so
+`languages()` is stable). Codes are normalized: `"de_AT.UTF-8"` becomes `"de-at"`, and
+`set`/`resolve` try the full code, then the part before the first `-`.
+
+`Runner::new` opens `ctx.storage` first, then builds the `Lang` (`load_lang` in
+`engine.rs`): load `Engine::lang_dir` (or the same folder in the macOS bundle's
+`Contents/Resources` when nothing was found), then pick the start language from the saved
+`language` storage key, `Engine::language`, `sys_locale::get_locale()` (only if a file
+exists for it, and never when headless, so tests do not depend on the machine) or keep the
+fallback.
+
+`get(key)` looks in: current table, fallback table, built in engine texts for the current
+language, for the fallback, and for English. The built in texts are a `match` per language
+in `lang.rs` (English and German), so they cost nothing until used and game files override
+them. A key found nowhere is returned as is and remembered in a `RefCell<HashSet>`, so the
+warning is printed once while `get` stays `&self`.
+
+Widgets get `&Lang` through `UiContext::lang` (`Ui` does not own it, like `Speech` and
+`Audio`). `math::describe_position`, `Vehicle::describe_speed` and `MenuItem::describe`
+call the translated versions with a fresh English `Lang`, so the text logic exists once.
 
 ## Storage (`storage.rs`)
 

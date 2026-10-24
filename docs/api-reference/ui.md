@@ -525,12 +525,25 @@ assert_eq!(item.value(), Some(Value::Bool(true)));
 
 ### `item.describe() -> String`
 
-What is spoken for the item, for example `"Music, checked"`.
+What is spoken for the item in English, for example `"Music, checked"`. Menus use
+`describe_in` with the current language.
 
 ```rust
 use audio_code::ui::{ItemKind, MenuItem};
 let item = MenuItem { id: "music".into(), label: "Music".into(), kind: ItemKind::Checkbox(true) };
 assert_eq!(item.describe(), "Music, checked");
+```
+
+### `item.describe_in(lang: &Lang) -> String`
+
+What is spoken for the item in the current language of `lang`.
+
+```rust
+use audio_code::ui::{ItemKind, MenuItem};
+let item = MenuItem { id: "music".into(), label: "Musik".into(), kind: ItemKind::Checkbox(true) };
+let mut lang = Lang::new();
+lang.set("de");
+assert_eq!(item.describe_in(&lang), "Musik, aktiviert");
 ```
 
 ## Message
@@ -551,7 +564,8 @@ no, and the first letter of an answer picks it directly. Emits `UiEvent::Confirm
 
 ### `Confirm::new(id: impl Into<String>, question: impl Into<String>) -> Confirm`
 
-A question with the answers "Yes" and "No", "Yes" focused.
+A question with the answers "Yes" and "No" in the current language (`ui.yes` / `ui.no`,
+"Ja" / "Nein" in German), "Yes" focused.
 
 ```rust
 ctx.ui.open(Confirm::new("restart", "Restart the level?"));
@@ -559,10 +573,10 @@ ctx.ui.open(Confirm::new("restart", "Restart the level?"));
 
 ### `confirm.labels(yes: impl Into<String>, no: impl Into<String>) -> Confirm`
 
-Changes the answer texts.
+Changes the answer texts. Without it, the answers follow the current language.
 
 ```rust
-ctx.ui.open(Confirm::new("quit", "Spiel beenden?").labels("Ja", "Nein"));
+ctx.ui.open(Confirm::new("quit", "Really quit?").labels("Sure", "Not yet"));
 ```
 
 ### `confirm.default_no() -> Confirm`
@@ -807,6 +821,7 @@ pub enum Status {
 | `ui.input: RawInput` | keyboard, never blocked |
 | `ui.speech: &mut Speech` | speech output |
 | `ui.audio: &mut Audio` | audio output |
+| `ui.lang: &Lang` | translations for texts the widget speaks itself ([lang.md](lang.md)) |
 | `ui.key(key) -> bool` | key went down or repeats |
 | `ui.emit(event: UiEvent)` | reports an event to the game |
 | `ui.play(sound: UiSound, custom: Option<&UiSounds>)` | plays an interface sound from `custom` or the global set |

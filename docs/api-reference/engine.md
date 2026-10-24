@@ -120,6 +120,24 @@ Folder searched for sounds by name. Default `"sounds"`, so `ctx.play("step")` fi
 let engine = Engine::new("Game").sound_dir("assets/audio");
 ```
 
+### `engine.lang_dir(dir: impl Into<PathBuf>) -> Engine`
+
+Folder with the translation files `<code>.txt`. Default `"lang"`. See [lang.md](lang.md).
+
+```rust
+let engine = Engine::new("Game").lang_dir("assets/lang");
+```
+
+### `engine.language(code: impl Into<String>) -> Engine`
+
+The language the game starts in, e.g. `"de"`. Default: the system language if the game has
+texts for it, else English. A language the player chose with `ctx.set_language` still
+wins. English and German engine texts are built in, so a German-only game needs no files.
+
+```rust
+let engine = Engine::new("Spiel").language("de");
+```
+
 ### `engine.echo_speech(echo: bool) -> Engine`
 
 Also prints everything spoken to the console. Default `false`. Handy while developing.

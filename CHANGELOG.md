@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.1.0 – unreleased
+## 0.2.0
+
+- Translations (`audio_code::lang`, `ctx.lang`): one `lang/<code>.txt` file per language
+  with `key = text` lines, `{name}` placeholders and `.one` / `.other` plurals;
+  `ctx.tr`, `ctx.tr_with`, `Lang::get`, `format`, `plural`, `plural_with`, `has`,
+  `add_text` (for `include_str!`), `insert`, `load_dir`, `languages`, `name`
+- Start language: the player's choice saved by `ctx.set_language`, then
+  `Engine::language`, then the system language (via `sys-locale`), then the fallback
+  (`Lang::set_fallback`, default English); `Engine::lang_dir` (default `"lang"`, also
+  looked up in macOS app bundles)
+- Missing keys fall back to the fallback language, then to the key itself with a warning
+  printed once
+- The engine's own texts are translated, with English and German built in: menu item
+  states, text fields, character names, yes/no answers, menu positions; `ctx.describe`,
+  `Lang::describe_position`, `direction_name` and `describe_speed` in the current
+  language; all keys can be overridden (list in `docs/translations.md`)
+- `UiContext::lang` for custom widgets, `MenuItem::describe_in`; `Confirm` answers follow
+  the current language unless set with `labels`
+- `docs/translations.md` and `docs/api-reference/lang.md`
+
+## 0.1.0
 
 First version.
 

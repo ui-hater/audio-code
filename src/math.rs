@@ -132,22 +132,11 @@ pub fn clock_position(relative_degrees: f32) -> u32 {
 /// * `"3 o'clock, 12 meters"`: same height
 /// * `"12 o'clock, 11 meters, 4 meters above"`
 /// * `"directly below, 5 meters"`: nothing to the side
+///
+/// Always English. [`Lang::describe_position`](crate::lang::Lang::describe_position) and
+/// [`Context::describe`](crate::Context::describe) use the current language.
 pub fn describe_position(from: Vec3, yaw: f32, target: Vec3) -> String {
-    let d = target - from;
-    let meters = |n: i64| if n == 1 { "1 meter".to_string() } else { format!("{n} meters") };
-    let distance = meters(d.length().round() as i64);
-    if d.x.hypot(d.y) < 0.5 && d.z.abs() >= 0.5 {
-        let side = if d.z > 0.0 { "above" } else { "below" };
-        return format!("directly {side}, {distance}");
-    }
-    let relative = angle_difference(yaw, bearing(from, target));
-    let mut text = format!("{} o'clock, {distance}", clock_position(relative));
-    let height = d.z.round() as i64;
-    if height != 0 {
-        let side = if height > 0 { "above" } else { "below" };
-        text.push_str(&format!(", {} {side}", meters(height.abs())));
-    }
-    text
+    crate::lang::Lang::new().describe_position(from, yaw, target)
 }
 
 /// Linear interpolation between `a` and `b`.

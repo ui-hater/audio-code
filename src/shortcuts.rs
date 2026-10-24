@@ -7,6 +7,9 @@ use crate::engine::Context;
 use crate::input::Key;
 use crate::physics::{BodyId, PhysicsEvent};
 
+/// Storage key under which [`Context::set_language`] remembers the player's language.
+pub(crate) const LANGUAGE_KEY: &str = "language";
+
 /// A sound that follows a physics body.
 #[derive(Debug)]
 pub(crate) struct Attached {
@@ -19,6 +22,67 @@ impl Context {
     /// Speaks text, interrupting current speech. Same as `ctx.speech.speak(text)`.
     pub fn speak(&mut self, text: impl AsRef<str>) {
         self.speech.speak(text);
+    }
+
+    /// The text for `key` in the current language. Same as `ctx.lang.get(key)`.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context) {
+    /// ctx.speak(ctx.tr("intro"));
+    /// # }
+    /// ```
+    pub fn tr(&self, key: &str) -> String {
+        self.lang.get(key)
+    }
+
+    /// The text for `key` with `{name}` placeholders filled in. Same as
+    /// `ctx.lang.format(key, args)`.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context, score: u32) {
+    /// // In lang/en.txt: score = You have {points} points.
+    /// ctx.speak(ctx.tr_with("score", &[("points", &score)]));
+    /// # }
+    /// ```
+    pub fn tr_with(&self, key: &str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
+        self.lang.format(key, args)
+    }
+
+    /// Switches the language and remembers it in [`Context::storage`], so the game starts in
+    /// it next time. Returns `false` if there are no texts for it.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context) {
+    /// let mut menu = Menu::new("language", "Language");
+    /// for code in ctx.lang.languages() {
+    ///     menu = menu.button(code.clone(), ctx.lang.name(&code));
+    /// }
+    /// ctx.ui.open(menu);
+    /// // ...later, in update():
+    /// if let Some(code) = ctx.ui.activated("language").map(String::from) {
+    ///     ctx.set_language(&code);
+    ///     ctx.ui.close();
+    /// }
+    /// # }
+    /// ```
+    pub fn set_language(&mut self, code: &str) -> bool {
+        if !self.lang.set(code) {
+            return false;
+        }
+        let current = self.lang.current().to_string();
+        self.storage.set(LANGUAGE_KEY, current);
+        true
+    }
+
+    /// Where `target` is as seen from `from`, in the current language, e.g.
+    /// `"3 o'clock, 12 meters"` or `"3 Uhr, 12 Meter"`. Like
+    /// [`World::describe`](crate::physics::World::describe), which is always English.
+    pub fn describe(&self, from: BodyId, target: BodyId) -> String {
+        let world = &self.physics;
+        self.lang.describe_position(world.position(from), world.facing(from), world.position(target))
     }
 
     /// Plays a sound once. Same as `ctx.audio.play(name)`.

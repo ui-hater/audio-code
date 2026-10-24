@@ -382,6 +382,9 @@ if let Some(v) = ctx.physics.vehicle_mut(player) {
 
 ### `vehicle.describe_speed() -> String`
 
+Always English; `ctx.lang.describe_speed(vehicle)` uses the current language
+([lang.md](lang.md)).
+
 `"54 kilometers per hour"`, `"1 kilometer per hour"`, `"reversing, 8 kilometers per hour"`.
 
 ```rust

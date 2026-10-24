@@ -346,15 +346,11 @@ impl Vehicle {
         self.speed = speed.clamp(-self.reverse_speed, self.top_speed);
     }
 
-    /// The speed ready to speak, e.g. `"54 kilometers per hour"` (reversing included).
+    /// The speed ready to speak, e.g. `"54 kilometers per hour"` (reversing included). Always
+    /// English; [`Lang::describe_speed`](crate::lang::Lang::describe_speed) uses the current
+    /// language.
     pub fn describe_speed(&self) -> String {
-        let kmh = self.speed_kmh().abs().round() as i64;
-        let unit = if kmh == 1 { "kilometer" } else { "kilometers" };
-        if self.is_reversing() {
-            format!("reversing, {kmh} {unit} per hour")
-        } else {
-            format!("{kmh} {unit} per hour")
-        }
+        crate::lang::Lang::new().describe_speed(self)
     }
 
     /// Whether the vehicle is rolling backwards.

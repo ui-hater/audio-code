@@ -67,21 +67,23 @@ impl Widget for Message {
 pub struct Confirm {
     id: String,
     question: String,
-    yes: String,
-    no: String,
+    /// Answer texts; `None` uses `ui.yes` / `ui.no` of the current language.
+    yes: Option<String>,
+    no: Option<String>,
     selected_yes: bool,
 }
 
 impl Confirm {
-    /// Creates a question with "Yes" and "No" answers, "Yes" focused.
+    /// Creates a question with "Yes" and "No" answers (in the current language, see
+    /// [`crate::lang`]), "Yes" focused.
     pub fn new(id: impl Into<String>, question: impl Into<String>) -> Self {
-        Self { id: id.into(), question: question.into(), yes: "Yes".into(), no: "No".into(), selected_yes: true }
+        Self { id: id.into(), question: question.into(), yes: None, no: None, selected_yes: true }
     }
 
     /// Changes the answer texts, e.g. `.labels("Ja", "Nein")`.
     pub fn labels(mut self, yes: impl Into<String>, no: impl Into<String>) -> Self {
-        self.yes = yes.into();
-        self.no = no.into();
+        self.yes = Some(yes.into());
+        self.no = Some(no.into());
         self
     }
 
@@ -91,8 +93,13 @@ impl Confirm {
         self
     }
 
-    fn current(&self) -> &str {
-        if self.selected_yes { &self.yes } else { &self.no }
+    fn label(&self, yes: bool, ui: &UiContext<'_>) -> String {
+        let (custom, key) = if yes { (&self.yes, "ui.yes") } else { (&self.no, "ui.no") };
+        custom.clone().unwrap_or_else(|| ui.lang.get(key))
+    }
+
+    fn current(&self, ui: &UiContext<'_>) -> String {
+        self.label(self.selected_yes, ui)
     }
 
     fn answer(&self, yes: bool, ui: &mut UiContext<'_>) -> Status {
@@ -113,24 +120,25 @@ impl Widget for Confirm {
 
     fn open(&mut self, ui: &mut UiContext<'_>) {
         ui.play(UiSound::Open, None);
-        ui.speech.speak(format!("{} {}", self.question, self.current()));
+        let answer = self.current(ui);
+        ui.speech.speak(format!("{} {answer}", self.question));
     }
 
     fn update(&mut self, ui: &mut UiContext<'_>) -> Status {
         if ui.key(Key::Up) || ui.key(Key::Down) || ui.key(Key::Left) || ui.key(Key::Right) || ui.key(Key::Tab) {
             self.selected_yes = !self.selected_yes;
             ui.play(UiSound::Navigate, None);
-            let text = self.current().to_string();
+            let text = self.current(ui);
             ui.speech.speak(text);
         } else if ui.key(Key::Enter) || ui.key(Key::NumpadEnter) || ui.input.pressed(Key::Space) {
             return self.answer(self.selected_yes, ui);
         } else if ui.key(Key::Escape) {
             return self.answer(false, ui);
         } else if let Some(c) = ui.input.text().chars().next().and_then(|c| c.to_lowercase().next()) {
-            if Some(c) == first_lower(&self.yes) {
+            if Some(c) == first_lower(&self.label(true, ui)) {
                 return self.answer(true, ui);
             }
-            if Some(c) == first_lower(&self.no) {
+            if Some(c) == first_lower(&self.label(false, ui)) {
                 return self.answer(false, ui);
             }
         }
@@ -222,18 +230,18 @@ impl TextInput {
 
     fn speak_char(&self, c: Option<char>, ui: &mut UiContext<'_>) {
         let text = match c {
-            None => "blank".to_string(),
-            Some(_) if self.password => "star".to_string(),
-            Some(c) => char_name(c),
+            None => ui.lang.get("ui.blank"),
+            Some(_) if self.password => ui.lang.get("ui.star"),
+            Some(c) => char_name(c, ui),
         };
         ui.speech.speak(text);
     }
 
     fn speak_all(&self, ui: &mut UiContext<'_>) {
         let text = if self.text.is_empty() {
-            "blank".to_string()
+            ui.lang.get("ui.blank")
         } else if self.password {
-            format!("{} characters", self.text.len())
+            ui.lang.plural("ui.characters", self.text.len() as i64)
         } else {
             self.content()
         };
@@ -264,28 +272,28 @@ impl TextInput {
 }
 
 /// Spoken name of a character, so punctuation is not silently skipped.
-fn char_name(c: char) -> String {
-    match c {
-        ' ' => "space",
-        '.' => "dot",
-        ',' => "comma",
-        '!' => "exclamation",
-        '?' => "question",
-        '-' => "dash",
-        '_' => "underscore",
-        ':' => "colon",
-        ';' => "semicolon",
-        '\'' => "apostrophe",
-        '"' => "quote",
-        '/' => "slash",
-        '\\' => "backslash",
-        '@' => "at",
-        '#' => "number",
-        '(' => "left paren",
-        ')' => "right paren",
+fn char_name(c: char, ui: &UiContext<'_>) -> String {
+    let key = match c {
+        ' ' => "char.space",
+        '.' => "char.dot",
+        ',' => "char.comma",
+        '!' => "char.exclamation",
+        '?' => "char.question",
+        '-' => "char.dash",
+        '_' => "char.underscore",
+        ':' => "char.colon",
+        ';' => "char.semicolon",
+        '\'' => "char.apostrophe",
+        '"' => "char.quote",
+        '/' => "char.slash",
+        '\\' => "char.backslash",
+        '@' => "char.at",
+        '#' => "char.number",
+        '(' => "char.left_paren",
+        ')' => "char.right_paren",
         _ => return c.to_string(),
-    }
-    .to_string()
+    };
+    ui.lang.get(key)
 }
 
 impl Widget for TextInput {
@@ -296,13 +304,14 @@ impl Widget for TextInput {
     fn open(&mut self, ui: &mut UiContext<'_>) {
         ui.play(UiSound::Open, None);
         let content = if self.text.is_empty() {
-            "blank".to_string()
+            ui.lang.get("ui.blank")
         } else if self.password {
-            format!("{} characters", self.text.len())
+            ui.lang.plural("ui.characters", self.text.len() as i64)
         } else {
             self.content()
         };
-        ui.speech.speak(format!("{}, edit, {content}", self.prompt));
+        let text = ui.lang.format("ui.edit", &[("label", &self.prompt), ("value", &content)]);
+        ui.speech.speak(text);
     }
 
     fn update(&mut self, ui: &mut UiContext<'_>) -> Status {
@@ -310,7 +319,8 @@ impl Widget for TextInput {
         if ui.key(Key::Enter) || ui.key(Key::NumpadEnter) {
             if self.text.is_empty() && !self.allow_empty {
                 ui.play(UiSound::Edge, None);
-                ui.speech.speak("blank");
+                let blank = ui.lang.get("ui.blank");
+                ui.speech.speak(blank);
                 return Status::Open;
             }
             ui.play(UiSound::Activate, None);

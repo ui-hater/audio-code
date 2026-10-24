@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use crate::audio::{Audio, Sound};
 use crate::error::Result;
 use crate::input::{Input, Key, KeyEvent};
+use crate::lang::Lang;
 use crate::physics::{BodyId, World};
 use crate::shortcuts::Attached;
 use crate::speech::Speech;
@@ -79,6 +80,8 @@ pub struct Context {
     pub physics: World,
     /// Values that are saved when the game quits (high scores, settings).
     pub storage: Storage,
+    /// Translations and the current language.
+    pub lang: Lang,
     pub(crate) follow: Option<BodyId>,
     pub(crate) attached: Vec<Attached>,
     pub(crate) engine_sounds: Vec<(BodyId, Sound)>,
@@ -195,6 +198,8 @@ pub struct Engine {
     pub(crate) gravity: glam::Vec3,
     pub(crate) save_file: Option<PathBuf>,
     pub(crate) save_secret: Option<String>,
+    pub(crate) lang_dir: PathBuf,
+    pub(crate) language: Option<String>,
 }
 
 impl Engine {
@@ -212,6 +217,8 @@ impl Engine {
             gravity: glam::Vec3::ZERO,
             save_file: None,
             save_secret: None,
+            lang_dir: PathBuf::from("lang"),
+            language: None,
         }
     }
 
@@ -252,6 +259,21 @@ impl Engine {
     /// Folder searched for sounds (default `"sounds"`). See [`crate::audio`].
     pub fn sound_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.sound_dir = dir.into();
+        self
+    }
+
+    /// Folder with the translation files `<code>.txt` (default `"lang"`). See
+    /// [`crate::lang`].
+    pub fn lang_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.lang_dir = dir.into();
+        self
+    }
+
+    /// The language the game starts in, e.g. `"de"` (default: the system language if the
+    /// game has texts for it, else English). A language the player chose with
+    /// [`Context::set_language`] still wins.
+    pub fn language(mut self, code: impl Into<String>) -> Self {
+        self.language = Some(code.into());
         self
     }
 
@@ -331,6 +353,27 @@ impl Engine {
     pub fn build(self, scene: impl Scene) -> Runner {
         Runner::new(self, Box::new(scene))
     }
+}
+
+/// Loads the translation files and picks the start language: the player's saved choice, then
+/// [`Engine::language`], then the system language, then the fallback.
+fn load_lang(config: &Engine, storage: &Storage) -> Lang {
+    let mut lang = Lang::new();
+    if lang.load_dir(&config.lang_dir) == 0
+        && config.lang_dir.is_relative()
+        && let Some(resources) = crate::bundle::resources()
+    {
+        lang.load_dir(resources.join(&config.lang_dir));
+    }
+    let saved = storage.get::<String>(crate::shortcuts::LANGUAGE_KEY).and_then(|c| lang.resolve(&c));
+    let configured = config.language.as_deref().and_then(|c| lang.resolve(c));
+    let system = if config.headless { None } else { Lang::system().and_then(|c| lang.resolve_loaded(&c)) };
+    if let Some(code) = saved.or(configured).or(system) {
+        lang.set(&code);
+    } else if let Some(code) = &config.language {
+        lang.set(code); // reports the unknown language
+    }
+    lang
 }
 
 /// A scene made from a closure.
@@ -415,6 +458,16 @@ impl std::fmt::Debug for Runner {
 
 impl Runner {
     pub(crate) fn new(config: Engine, scene: Box<dyn Scene>) -> Self {
+        let storage = if config.headless {
+            Storage::in_memory()
+        } else {
+            let file = config.save_file.clone().unwrap_or_else(|| crate::storage::default_file(&config.title));
+            match &config.save_secret {
+                Some(secret) => Storage::open_encrypted(file, secret),
+                None => Storage::open(file),
+            }
+        };
+        let lang = load_lang(&config, &storage);
         let ctx = Context {
             time: Time::new(),
             input: Input::default(),
@@ -430,15 +483,8 @@ impl Runner {
                 world.set_gravity(config.gravity);
                 world
             },
-            storage: if config.headless {
-                Storage::in_memory()
-            } else {
-                let file = config.save_file.clone().unwrap_or_else(|| crate::storage::default_file(&config.title));
-                match &config.save_secret {
-                    Some(secret) => Storage::open_encrypted(file, secret),
-                    None => Storage::open(file),
-                }
-            },
+            storage,
+            lang,
             follow: None,
             attached: Vec::new(),
             engine_sounds: Vec::new(),
@@ -509,7 +555,7 @@ impl Runner {
         ctx.time.advance(now);
         ctx.input.begin_frame(now);
 
-        let consumed = ctx.ui.update(&ctx.input, &mut ctx.speech, &mut ctx.audio);
+        let consumed = ctx.ui.update(&ctx.input, &mut ctx.speech, &mut ctx.audio, &ctx.lang);
         ctx.input.set_blocked(consumed || ctx.ui.is_open());
 
         if let Some(scene) = self.scenes.last_mut() {
@@ -644,5 +690,17 @@ mod tests {
         *runner.ctx.get_mut::<u32>().unwrap() += 1;
         assert_eq!(runner.ctx.get::<u32>(), Some(&6));
         assert_eq!(*runner.ctx.get_or_default::<String>(), "");
+    }
+
+    #[test]
+    fn start_language() {
+        let runner = Engine::new("test").headless().build(Recorder(Rc::default(), "x"));
+        assert_eq!(runner.ctx.lang.current(), "en");
+        let mut runner = Engine::new("test").headless().language("de").build(Recorder(Rc::default(), "x"));
+        assert_eq!(runner.ctx.lang.current(), "de");
+        assert_eq!(runner.ctx.tr("ui.yes"), "Ja");
+        assert!(runner.ctx.set_language("en-US"));
+        assert_eq!(runner.ctx.storage.get::<String>("language").as_deref(), Some("en"));
+        assert!(!runner.ctx.set_language("xx"));
     }
 }

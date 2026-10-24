@@ -668,6 +668,8 @@ if ctx.physics.distance(player, enemy) < 2.0 {
 
 ### `ctx.physics.describe(from: BodyId, target: BodyId) -> String`
 
+Always English; `ctx.describe(from, target)` uses the current language ([lang.md](lang.md)).
+
 Where `target` is from `from`'s point of view, ready to speak, using `from`'s facing:
 `"3 o'clock, 12 meters"`, `"12 o'clock, 11 meters, 4 meters above"`,
 `"directly below, 5 meters"`.

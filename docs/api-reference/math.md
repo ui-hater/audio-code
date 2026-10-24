@@ -167,6 +167,9 @@ assert_eq!(math::clock_position(0.0), 12);
 
 ### `math::describe_position(from: Vec3, yaw: f32, target: Vec3) -> String`
 
+Always English; `ctx.lang.describe_position` and `ctx.describe` use the current language
+([lang.md](lang.md)).
+
 Where `target` is for someone at `from` facing `yaw`, ready to speak. The distance is
 straight-line 3D, rounded; a height difference of a meter or more is added.
 

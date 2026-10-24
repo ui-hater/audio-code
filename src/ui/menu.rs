@@ -2,6 +2,7 @@
 
 use super::dialog::TextInput;
 use super::{Status, UiContext, UiEvent, UiSound, UiSounds, Value, Widget, format_number};
+use crate::lang::Lang;
 use crate::input::Key;
 
 /// What kind of item a [`MenuItem`] is.
@@ -65,24 +66,29 @@ impl MenuItem {
         }
     }
 
-    /// What a screen reader would say for this item.
+    /// What a screen reader would say for this item, in English.
     pub fn describe(&self) -> String {
+        self.describe_in(&Lang::new())
+    }
+
+    /// What a screen reader would say for this item, in the current language of `lang`.
+    pub fn describe_in(&self, lang: &Lang) -> String {
         match &self.kind {
             ItemKind::Button | ItemKind::Label => self.label.clone(),
-            ItemKind::Checkbox(b) => format!("{}, {}", self.label, if *b { "checked" } else { "not checked" }),
+            ItemKind::Checkbox(b) => format!("{}, {}", self.label, lang.get(if *b { "ui.checked" } else { "ui.not_checked" })),
             ItemKind::Slider { value, .. } => format!("{}, {}", self.label, format_number(*value)),
             ItemKind::Choice { options, selected } => {
                 format!("{}, {}", self.label, options.get(*selected).map_or("", String::as_str))
             }
             ItemKind::Text { value, password } => {
                 let shown = if value.is_empty() {
-                    "blank".to_string()
+                    lang.get("ui.blank")
                 } else if *password {
-                    format!("{} characters", value.chars().count())
+                    lang.plural("ui.characters", value.chars().count() as i64)
                 } else {
                     value.clone()
                 };
-                format!("{}, edit, {shown}", self.label)
+                lang.format("ui.edit", &[("label", &self.label), ("value", &shown)])
             }
         }
     }
@@ -277,12 +283,14 @@ impl Menu {
         }
         match self.current() {
             Some(item) => {
-                text.push_str(&item.describe());
+                text.push_str(&item.describe_in(ui.lang));
                 if self.positions {
-                    text.push_str(&format!(", {} of {}", self.index + 1, self.items.len()));
+                    let (index, count) = (self.index + 1, self.items.len());
+                    text.push_str(", ");
+                    text.push_str(&ui.lang.format("ui.position", &[("index", &index), ("count", &count)]));
                 }
             }
-            None => text.push_str("empty"),
+            None => text.push_str(&ui.lang.get("ui.empty")),
         }
         ui.speech.speak(text);
     }
@@ -290,7 +298,7 @@ impl Menu {
     fn speak_value(&self, ui: &mut UiContext<'_>) {
         if let Some(item) = self.current() {
             match item.value() {
-                Some(Value::Bool(b)) => ui.speech.speak(if b { "checked" } else { "not checked" }),
+                Some(Value::Bool(b)) => ui.speech.speak(ui.lang.get(if b { "ui.checked" } else { "ui.not_checked" })),
                 Some(v) => ui.speech.speak(v.to_text()),
                 None => {}
             }

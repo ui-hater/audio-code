@@ -10,6 +10,7 @@
 //! * **Vehicles**: cars and trucks with weight, speed, gears, brakes and fuel ([`vehicle`])
 //! * **Time**: frame timing, a scheduler, timers, cooldowns and intervals ([`time`])
 //! * **Input**: pressed / held / released, custom key repeat, typed text ([`input`])
+//! * **Translations**: one text file per language, engine texts in English and German ([`lang`])
 //! * Optional **wxWidgets** integration through wxDragon (`audio_code::wx`, feature `wxdragon`)
 //!
 //! ## A complete game in 30 lines
@@ -57,6 +58,7 @@ mod bundle;
 mod engine;
 mod error;
 pub mod input;
+pub mod lang;
 pub mod level;
 pub mod math;
 pub mod physics;
@@ -111,6 +113,7 @@ pub mod prelude {
     pub use crate::audio::{Audio, Group, Sound, SoundData, Synth, Wave};
     pub use crate::engine::{Context, Engine, Scene};
     pub use crate::input::{Input, Key, Modifiers};
+    pub use crate::lang::Lang;
     pub use crate::level::Level;
     pub use crate::math::{self, Vec2, Vec3, random, vec2, vec3};
     pub use crate::physics::{Body, BodyId, BodyKind, EARTH_GRAVITY, MoveResult, PhysicsEvent, RayHit, Shape, World};

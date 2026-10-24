@@ -41,6 +41,7 @@ pub use sounds::{UiSound, UiSounds};
 
 use crate::audio::{Audio, SoundData};
 use crate::input::{Input, Key, RawInput};
+use crate::lang::Lang;
 use crate::speech::Speech;
 
 /// A value carried by a UI event or stored in a menu item.
@@ -199,6 +200,8 @@ pub struct UiContext<'a> {
     pub speech: &'a mut Speech,
     /// Audio output.
     pub audio: &'a mut Audio,
+    /// Translations, for texts the widget speaks by itself (see [`crate::lang`]).
+    pub lang: &'a Lang,
     sounds: &'a UiSounds,
     events: &'a mut Vec<UiEvent>,
 }
@@ -266,7 +269,7 @@ impl std::fmt::Debug for Ui {
 
 impl Ui {
     /// Runs the top widget. Returns `true` if the UI used the keyboard this frame.
-    pub(crate) fn update(&mut self, input: &Input, speech: &mut Speech, audio: &mut Audio) -> bool {
+    pub(crate) fn update(&mut self, input: &Input, speech: &mut Speech, audio: &mut Audio, lang: &Lang) -> bool {
         self.events.clear();
         for (name, data) in self.pending_sounds.drain(..) {
             audio.register(name, data);
@@ -275,7 +278,7 @@ impl Ui {
         let Some(top) = self.stack.last_mut() else {
             return false;
         };
-        let mut ui = UiContext { input: input.raw(), speech, audio, sounds: &self.sounds, events: &mut self.events };
+        let mut ui = UiContext { input: input.raw(), speech, audio, lang, sounds: &self.sounds, events: &mut self.events };
         let status = match std::mem::replace(&mut top.state, State::Active) {
             State::Fresh => {
                 top.widget.open(&mut ui);
@@ -505,13 +508,14 @@ mod tests {
         pub input: Input,
         pub speech: Speech,
         pub audio: Audio,
+        pub lang: Lang,
     }
 
     impl Harness {
         pub fn new() -> Self {
             let mut speech = Speech::console();
             speech.set_echo(false);
-            Self { ui: Ui::default(), input: Input::default(), speech, audio: Audio::silent("sounds") }
+            Self { ui: Ui::default(), input: Input::default(), speech, audio: Audio::silent("sounds"), lang: Lang::new() }
         }
 
         pub fn frame(&mut self, keys: &[Key], text: &str) {
@@ -521,7 +525,7 @@ mod tests {
             }
             self.input.push_text(text);
             self.input.begin_frame(Instant::now());
-            self.ui.update(&self.input, &mut self.speech, &mut self.audio);
+            self.ui.update(&self.input, &mut self.speech, &mut self.audio, &self.lang);
         }
     }
 
@@ -641,5 +645,20 @@ mod tests {
         h.frame(&[], "");
         h.frame(&[Key::Escape], "");
         assert_eq!(h.ui.confirmed("quit"), Some(false));
+    }
+
+    #[test]
+    fn speaks_the_current_language() {
+        let mut h = Harness::new();
+        h.lang.set("de");
+        h.ui.open(Menu::new("m", "").checkbox("music", "Musik", false).positions(true));
+        h.frame(&[], "");
+        assert_eq!(h.speech.last(), Some("Musik, nicht aktiviert, 1 von 1"));
+        h.ui.close();
+        h.ui.confirm("quit", "Beenden?");
+        h.frame(&[], "");
+        assert_eq!(h.speech.last(), Some("Beenden? Ja"));
+        h.frame(&[], "n");
+        assert_eq!(h.ui.confirmed("quit"), Some(false), "first letter of the translated answer");
     }
 }

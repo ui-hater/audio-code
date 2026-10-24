@@ -127,6 +127,22 @@ Encrypt the save file (optional): `Engine::new("My game").encrypt_save("secret w
 it cannot be read, `ctx.storage.load_error()` says why and the file is kept as
 `<file>.broken`.
 
+## Translations
+
+```text
+lang/en.txt:   score = You have {points} points.
+lang/de.txt:   score = Du hast {points} Punkte.
+```
+
+```rust
+ctx.speak(ctx.tr("intro"));
+ctx.speak(ctx.tr_with("score", &[("points", &points)]));
+ctx.speak(ctx.lang.plural("coins", 3));        // coins.one / coins.other
+ctx.set_language("de");                        // remembered for the next start
+ctx.speak(ctx.describe(player, enemy));        // "3 Uhr, 12 Meter"
+Engine::new("Spiel").language("de")            // start language, engine texts in German
+```
+
 ## Sharing data between scenes
 
 ```rust

@@ -126,7 +126,7 @@ Space or Escape close it.
 ```rust
 ctx.ui.confirm("quit", "Do you really want to quit?");
 // or with options:
-ctx.ui.open(Confirm::new("delete", "Delete save game?").labels("Ja", "Nein").default_no());
+ctx.ui.open(Confirm::new("delete", "Delete save game?").labels("Delete", "Keep").default_no());
 
 match ctx.ui.confirmed("quit") {
     Some(true) => ctx.quit(),
@@ -160,6 +160,13 @@ if let Some(text) = ctx.ui.submitted("name") { /* ... */ }
 | Escape                 | cancel (`closed` event)              |
 
 `.password()` speaks "star" instead of the characters.
+
+## Language
+
+The words the UI adds by itself ("checked", "Yes" / "No", "blank", character names) follow
+the current language: English and German are built in, other languages come from your
+translation files. Labels and titles are your own text, so pass `ctx.tr("menu.play")`
+there. See [Translations](translations.md).
 
 ## Interface sounds
 
@@ -258,6 +265,9 @@ impl Widget for KeyRecorder {
 
 ctx.ui.open(KeyRecorder);
 ```
+
+A widget that speaks fixed words of its own can translate them with `ui.lang.get(key)` (see
+[Translations](translations.md)).
 
 `Status::Push(Box::new(other_widget))` opens a child widget, and
 `Status::CloseWith(value)` closes the widget and passes `value` to the widget below in

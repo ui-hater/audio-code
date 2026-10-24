@@ -24,6 +24,7 @@ is the dictionary next to them: short, complete and in a fixed format.
 | [ui.md](ui.md) | `Ui` (`ctx.ui`), `Menu`, `MenuItem`, `ItemKind`, `Message`, `Confirm`, `TextInput`, `Value`, `UiEvent`, `UiSound`, `UiSounds`, `Widget`, `Status`, `UiContext` |
 | [math.md](math.md) | `Vec2`, `Vec3`, `vec2`, `vec3`, angle and direction helpers, decibels, `math::random` |
 | [storage.md](storage.md) | `Storage` (`ctx.storage`) |
+| [lang.md](lang.md) | translations: `Lang` (`ctx.lang`), `ctx.tr`, `ctx.tr_with`, `ctx.set_language`, `ctx.describe` |
 | [wx.md](wx.md) | wxDragon backend (feature `wxdragon`): `Engine::run_wx`, `GameHost` |
 
 ## How to read an entry
@@ -115,3 +116,4 @@ Where to find a function by name:
 | `ctx.ui.open`, `message`, `confirm`, `input`, `clicked`, `changed`, `confirmed`, `submitted`, `Menu::*` | [ui.md](ui.md) |
 | `forward`, `right`, `bearing`, `describe_position`, `direction_name`, `clock_position`, `look_at`, `random::*` | [math.md](math.md) |
 | `ctx.storage.get`, `get_or`, `set`, `add`, `save`, `load_error`, `Storage::open_encrypted`, `encrypt_save` | [storage.md](storage.md) |
+| `ctx.tr`, `ctx.tr_with`, `ctx.set_language`, `ctx.describe`, `ctx.lang.get`, `format`, `plural`, `set`, `languages`, `name`, `add_text`, `Engine::language`, `Engine::lang_dir` | [lang.md](lang.md) |

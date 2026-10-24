@@ -43,7 +43,7 @@ cargo run    --features wxdragon --example wx_game
 
 `Engine::run_with(|ctx| Scene)` wraps the first scene in a private `Lazy` scene, so its constructor can use the context. `audio_code::run` / `Engine::run_fn` wrap a closure in `FnScene`.
 
-**Ease-of-use layer.** `src/shortcuts.rs` holds the `impl Context` shortcuts (`speak`, `play`, `pressed`, `once`, `follow`, `loop_on`, ...). `src/level.rs` holds `World::build_level` for text maps. `src/storage.rs` holds `ctx.storage`, which is in memory when headless. The design goal is that examples read like the cheat sheet (`docs/cheatsheet.md`). New conveniences go there and into that page.
+**Ease-of-use layer.** `src/shortcuts.rs` holds the `impl Context` shortcuts (`speak`, `play`, `pressed`, `once`, `follow`, `loop_on`, ...). `src/level.rs` holds `World::build_level` for text maps. `src/storage.rs` holds `ctx.storage`, which is in memory when headless. `src/lang.rs` holds `ctx.lang` (translations from `lang/<code>.txt`, built in English/German engine texts); widgets get it as `UiContext::lang`, and engine-spoken words go through its keys instead of English literals. The design goal is that examples read like the cheat sheet (`docs/cheatsheet.md`). New conveniences go there and into that page.
 
 **Context** exposes public fields `time`, `input`, `audio`, `speech`, `ui` and `physics`, plus a type-keyed map for shared data (`ctx.insert/get/get_mut`). Scenes receive `&mut Context`. Because `Runner` holds the context and the scenes in separate fields, disjoint borrows work.
 

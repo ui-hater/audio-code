@@ -21,6 +21,7 @@ make the common things one line long:
 | **Time** | Frame delta, slow motion and pause, a named scheduler (`after`, `every`), timers, cooldowns, intervals. |
 | **Input** | Pressed / held / released keys, key repeat with your own timing, typed text, direction helpers. |
 | **Scenes** | Main menu, levels and pause screens as a stack. Shared data between scenes. |
+| **Translations** | One text file per language (`lang/de.txt`), `ctx.tr("key")`, placeholders and plurals, the system language picked automatically. Menus, dialogs and directions speak English or German out of the box. |
 | **Saving** | `ctx.storage` stores high scores and settings and writes them when the game quits. Optionally encrypted, so players cannot edit their save. |
 | **Windows** | Runs on Windows, macOS and Linux. A plain window (winit) by default, or a native wxWidgets window via [wxDragon](https://crates.io/crates/wxdragon). |
 
@@ -267,9 +268,10 @@ fields:
 | `ctx.ui` | `Ui` | menus and dialogs |
 | `ctx.physics` | `World` | bodies, collisions, events |
 | `ctx.storage` | `Storage` | saved values |
+| `ctx.lang` | `Lang` | translations, current language |
 
 On top of that, `ctx` has shortcuts for the most common calls: `speak`, `play`, `play_at`,
-`pressed`, `held`, `once`, `follow`, `loop_on`, `play_on`, `attach`. It also stores data
+`pressed`, `held`, `once`, `follow`, `loop_on`, `play_on`, `attach`, `tr`, `describe`. It also stores data
 shared between scenes with `ctx.insert(value)` / `ctx.get::<T>()`.
 
 ### One frame
@@ -408,6 +410,7 @@ src/
 ├── input.rs        Key, Input (pressed/held/released, repeat, text)
 ├── time.rs         Time (frame time + scheduler), Timer, Cooldown, Interval
 ├── storage.rs      key-value saving
+├── lang.rs         translations: language files, lookup, built in engine texts
 ├── math.rs         coordinate conventions, angles, directions, random helpers
 └── error.rs        Error and Result
 ```
@@ -504,6 +507,7 @@ gives silent audio and console speech, and drive frames by hand with `Runner::fr
 - [Positions, directions and 3D](docs/3d.md): what `vec3(x, y, z)` means, angles, flying, sound above and below
 - [Time and input](docs/time-and-input.md): delta time, scheduler, timers, keys
 - [Scenes, shared data and saving](docs/scenes.md)
+- [Translations](docs/translations.md): language files, placeholders, plurals, a language menu, engine texts
 - [wxDragon integration](docs/wxdragon.md)
 - [Architecture](docs/architecture.md): how the engine works inside
 - [API reference](docs/api-reference/README.md): every public function with its signature and an example, for looking things up (also `cargo doc --open`)

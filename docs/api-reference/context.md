@@ -15,6 +15,7 @@ scenes, and offers shortcuts for the most common calls.
 | `ctx.ui` | `Ui` | [ui.md](ui.md) |
 | `ctx.physics` | `World` | [physics.md](physics.md) |
 | `ctx.storage` | `Storage` | [storage.md](storage.md) |
+| `ctx.lang` | `Lang` | [lang.md](lang.md) |
 
 The fields are separate, so you can borrow two of them at once:
 
@@ -285,6 +286,16 @@ The sound is moved to the body at once. Like `loop_on`, it stops when the body i
 ```rust
 let hum = ctx.audio.sound("hum").volume(0.3).looped().at(Vec3::ZERO).play();
 ctx.attach(enemy, hum);
+```
+
+### Translation shortcuts
+
+`ctx.tr(key)`, `ctx.tr_with(key, args)`, `ctx.set_language(code)` and
+`ctx.describe(from, target)` are documented in [lang.md](lang.md).
+
+```rust
+ctx.speak(ctx.tr("intro"));
+ctx.speak(ctx.describe(player, enemy));   // "3 o'clock, 12 meters" in the current language
 ```
 
 ### Vehicle shortcuts
