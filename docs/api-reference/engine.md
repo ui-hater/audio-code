@@ -282,6 +282,46 @@ runner.key_down(Key::Enter, false);
 assert!(!runner.frame());   // false: the game quit
 ```
 
+### `engine.run_server(scene: impl Scene) -> Result<()>`
+
+Runs a dedicated server: no window, no sound, speech goes to the console (so `ctx.speak`
+is a log), and the storage is saved as usual. Runs until `ctx.quit()`. Host with
+`ctx.net.host(..)` in the first scene. See [net.md](net.md).
+
+```rust
+use audio_code::prelude::*;
+
+struct Server;
+
+impl Scene for Server {
+    fn start(&mut self, ctx: &mut Context) {
+        ctx.net.host(net::DEFAULT_PORT).expect("port is free");
+        ctx.speak("Server started");
+    }
+    fn update(&mut self, ctx: &mut Context) {
+        for (from, packet) in ctx.net.messages() {
+            ctx.net.send_all_except(from, packet);
+        }
+    }
+}
+
+fn main() -> audio_code::Result<()> {
+    Engine::new("My game").run_server(Server)
+}
+```
+
+### `engine.run_server_fn(update: impl FnMut(&mut Context) + 'static) -> Result<()>`
+
+Like `run_server` for a server written as one closure.
+
+```rust
+Engine::new("My game").run_server_fn(|ctx| {
+    if ctx.once("host") {
+        ctx.net.host(7777).expect("port is free");
+    }
+})?;
+```
+
 `engine.run_wx(..)` and `engine.run_wx_with(..)` (feature `wxdragon`) are described in
 [wx.md](wx.md).
 
@@ -293,6 +333,7 @@ pub trait Scene: 'static {
     fn update(&mut self, ctx: &mut Context);           // required
     fn fixed_update(&mut self, ctx: &mut Context) {}
     fn on_ui(&mut self, event: &UiEvent, ctx: &mut Context) {}
+    fn on_net(&mut self, event: &NetEvent, ctx: &mut Context) {}
     fn pause(&mut self, ctx: &mut Context) {}
     fn resume(&mut self, ctx: &mut Context) {}
     fn end(&mut self, ctx: &mut Context) {}
@@ -303,7 +344,8 @@ One screen or state of the game: main menu, level, pause screen, game over. Only
 is required. Scenes are changed with `ctx.switch_scene`, `ctx.push_scene` and
 `ctx.pop_scene` (see [context.md](context.md#scene-changes)).
 
-Order inside one frame: UI update → `on_ui` for each UI event → zero or more physics steps,
+Order inside one frame: network events are collected → UI update → `on_ui` for each UI
+event → `on_net` for each network event → zero or more physics steps,
 each followed by `fixed_update` → `update` → listener and attached sounds follow their
 bodies → pending scene change is applied.
 
@@ -387,6 +429,30 @@ impl Scene for MainMenu {
                 "quit" => ctx.quit(),
                 _ => ctx.speak("Not yet"),
             }
+        }
+    }
+    fn update(&mut self, ctx: &mut Context) {}
+}
+```
+
+### `fn on_net(&mut self, event: &NetEvent, ctx: &mut Context)`
+
+Called for every network event of the frame (a player joined, a packet arrived, a player
+left), after `on_ui` and before `update`. An alternative to polling `ctx.net.received(..)`
+in `update`. The events stay readable through `ctx.net` for the rest of the frame.
+
+```rust
+use audio_code::prelude::*;
+
+struct Lobby;
+
+impl Scene for Lobby {
+    fn on_net(&mut self, event: &NetEvent, ctx: &mut Context) {
+        match event {
+            NetEvent::Connected(player) => ctx.speak(format!("{} joined", ctx.net.name(*player))),
+            NetEvent::Message(_, packet) if packet.is("chat") => ctx.speak(packet.text(0)),
+            NetEvent::Disconnected(_, reason) => ctx.speak(ctx.lang.describe_reason(reason)),
+            _ => {}
         }
     }
     fn update(&mut self, ctx: &mut Context) {}
@@ -562,12 +628,14 @@ pub enum Error {
     Decode(String),       // a sound file could not be decoded
     Audio(String),        // the audio device could not be opened
     Window(String),       // the window or event loop could not be created
+    Net(String),          // a network server could not be started (port in use)
 }
 ```
 
 Implements `Display`, `std::error::Error` and `From<std::io::Error>`. Most of the engine
 never returns errors (missing sounds only warn). You see them from `Engine::run`,
-`Audio::preload`, `Audio::preload_dir`, `SoundData::load` and `Storage::save`.
+`Audio::preload`, `Audio::preload_dir`, `SoundData::load`, `Storage::save` and
+`Net::host`.
 
 ```rust
 match ctx.audio.preload("music/boss") {
@@ -593,7 +661,9 @@ match ctx.audio.preload("music/boss") {
 - `Confirm`, `Menu`, `Message`, `TextInput`, `Ui`, `UiEvent`, `UiSound`, `UiSounds`,
   `Value`, `Widget`
 - `Vehicle`
+- `net` (the module), `Net`, `NetEvent`, `Packet`, `PeerId`, `Reason`
 
 Not in the prelude (import by path): `audio_code::Runner`, `audio_code::Error`,
 `audio_code::audio::SoundBuilder`, `audio_code::input::RawInput`,
-`audio_code::ui::{Status, UiContext, MenuItem, ItemKind}`, `audio_code::wx::GameHost`.
+`audio_code::ui::{Status, UiContext, MenuItem, ItemKind}`, `audio_code::net::Arg`,
+`audio_code::wx::GameHost`.

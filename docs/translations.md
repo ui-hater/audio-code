@@ -178,6 +178,15 @@ or to change the wording, put these keys into your files:
 | `unit.meters.one` / `.other` | 1 meter / {n} meters | 1 Meter / {n} Meter |
 | `unit.kmh.one` / `.other` | 1 kilometer per hour / {n} kilometers per hour | 1 Kilometer pro Stunde / {n} Kilometer pro Stunde |
 | `vehicle.reversing` | reversing, {speed} | rückwärts, {speed} |
+| `net.left` | Left the game | Hat das Spiel verlassen |
+| `net.closed` | The server was closed | Der Server wurde geschlossen |
+| `net.kicked` / `net.kicked_reason` | Kicked from the server / Kicked from the server: {reason} | Vom Server geworfen / Vom Server geworfen: {reason} |
+| `net.server_full` | The server is full | Der Server ist voll |
+| `net.wrong_game` | This server runs another game: {game} | Auf diesem Server läuft ein anderes Spiel: {game} |
+| `net.wrong_version` | Wrong game version. The server has version {version} | Falsche Spielversion. Der Server hat Version {version} |
+| `net.timed_out` | The connection timed out | Zeitüberschreitung der Verbindung |
+| `net.failed` | Could not connect: {error} | Verbindung fehlgeschlagen: {error} |
+| `net.lost` | Connection lost: {error} | Verbindung verloren: {error} |
 
 `ctx.physics.describe`, `math::describe_position`, `math::direction_name` and
 `Vehicle::describe_speed` stay English; use `ctx.describe`, `ctx.lang.describe_position`,

@@ -9,6 +9,7 @@ use crate::audio::{Audio, Sound};
 use crate::error::Result;
 use crate::input::{Input, Key, KeyEvent};
 use crate::lang::Lang;
+use crate::net::{Net, NetEvent};
 use crate::physics::{BodyId, World};
 use crate::shortcuts::Attached;
 use crate::speech::Speech;
@@ -39,6 +40,13 @@ pub trait Scene: 'static {
     /// Called for every UI event before [`Scene::update`]. An alternative to polling
     /// `ctx.ui.clicked(...)` and friends in `update`.
     fn on_ui(&mut self, event: &UiEvent, ctx: &mut Context) {
+        let _ = (event, ctx);
+    }
+
+    /// Called for every network event (a player joined, a packet arrived, a player left)
+    /// before [`Scene::update`]. An alternative to polling `ctx.net.received(..)` and
+    /// friends in `update`.
+    fn on_net(&mut self, event: &NetEvent, ctx: &mut Context) {
         let _ = (event, ctx);
     }
 
@@ -82,6 +90,8 @@ pub struct Context {
     pub storage: Storage,
     /// Translations and the current language.
     pub lang: Lang,
+    /// Online play: hosting, joining and sending packets.
+    pub net: Net,
     pub(crate) follow: Option<BodyId>,
     pub(crate) attached: Vec<Attached>,
     pub(crate) engine_sounds: Vec<(BodyId, Sound)>,
@@ -195,6 +205,7 @@ pub struct Engine {
     pub(crate) echo_speech: bool,
     pub(crate) window_size: (u32, u32),
     pub(crate) headless: bool,
+    pub(crate) server: bool,
     pub(crate) gravity: glam::Vec3,
     pub(crate) save_file: Option<PathBuf>,
     pub(crate) save_secret: Option<String>,
@@ -214,6 +225,7 @@ impl Engine {
             echo_speech: false,
             window_size: (640, 480),
             headless: false,
+            server: false,
             gravity: glam::Vec3::ZERO,
             save_file: None,
             save_secret: None,
@@ -295,6 +307,39 @@ impl Engine {
     pub fn headless(mut self) -> Self {
         self.headless = true;
         self
+    }
+
+    /// Runs a dedicated server: no window, no sound, speech goes to the console (so
+    /// `ctx.speak` works as a log). The storage is saved as usual. Runs until
+    /// [`Context::quit`] is called. Host with `ctx.net.host(..)` in the first scene.
+    ///
+    /// ```no_run
+    /// use audio_code::prelude::*;
+    ///
+    /// fn main() -> audio_code::Result<()> {
+    ///     Engine::new("My game").run_server_fn(|ctx| {
+    ///         if ctx.once("host") {
+    ///             ctx.net.host(net::DEFAULT_PORT).expect("port is free");
+    ///             ctx.speak("Server started");
+    ///         }
+    ///         for (from, packet) in ctx.net.messages() {
+    ///             ctx.net.send_all_except(from, packet);
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    pub fn run_server(mut self, scene: impl Scene) -> Result<()> {
+        self.server = true;
+        let mut runner = self.build(scene);
+        while runner.frame() {
+            std::thread::sleep(runner.next_frame_time().saturating_duration_since(Instant::now()));
+        }
+        Ok(())
+    }
+
+    /// Like [`Engine::run_server`] for a server written as one closure.
+    pub fn run_server_fn(self, update: impl FnMut(&mut Context) + 'static) -> Result<()> {
+        self.run_server(FnScene(update))
     }
 
     /// Opens the window and runs the game until it quits.
@@ -420,6 +465,11 @@ impl<S: Scene, F: FnOnce(&mut Context) -> S + 'static> Scene for Lazy<S, F> {
             s.on_ui(event, ctx);
         }
     }
+    fn on_net(&mut self, event: &NetEvent, ctx: &mut Context) {
+        if let Some(s) = &mut self.scene {
+            s.on_net(event, ctx);
+        }
+    }
     fn pause(&mut self, ctx: &mut Context) {
         if let Some(s) = &mut self.scene {
             s.pause(ctx);
@@ -471,12 +521,12 @@ impl Runner {
         let ctx = Context {
             time: Time::new(),
             input: Input::default(),
-            audio: if config.headless {
+            audio: if config.headless || config.server {
                 Audio::silent(config.sound_dir.clone())
             } else {
                 Audio::new(config.sound_dir.clone())
             },
-            speech: if config.headless { Speech::console() } else { Speech::new(config.echo_speech) },
+            speech: if config.headless || config.server { Speech::console() } else { Speech::new(config.echo_speech) },
             ui: Ui::default(),
             physics: {
                 let mut world = World::new();
@@ -485,6 +535,7 @@ impl Runner {
             },
             storage,
             lang,
+            net: Net::new(config.title.clone()),
             follow: None,
             attached: Vec::new(),
             engine_sounds: Vec::new(),
@@ -554,6 +605,7 @@ impl Runner {
         let ctx = &mut self.ctx;
         ctx.time.advance(now);
         ctx.input.begin_frame(now);
+        ctx.net.update();
 
         let consumed = ctx.ui.update(&ctx.input, &mut ctx.speech, &mut ctx.audio, &ctx.lang);
         ctx.input.set_blocked(consumed || ctx.ui.is_open());
@@ -561,6 +613,15 @@ impl Runner {
         if let Some(scene) = self.scenes.last_mut() {
             for event in self.ctx.ui.take_events() {
                 scene.on_ui(&event, &mut self.ctx);
+            }
+            if !self.ctx.net.events.is_empty() {
+                // Handed out one by one, then put back so `ctx.net.received(..)` still works.
+                let events = std::mem::take(&mut self.ctx.net.events);
+                for event in &events {
+                    scene.on_net(event, &mut self.ctx);
+                }
+                let added = std::mem::replace(&mut self.ctx.net.events, events);
+                self.ctx.net.events.extend(added);
             }
 
             self.ctx.physics.clear_events();
@@ -625,6 +686,7 @@ impl Runner {
         while let Some(mut scene) = self.scenes.pop() {
             scene.end(&mut self.ctx);
         }
+        self.ctx.net.close();
         if let Err(e) = self.ctx.storage.save() {
             eprintln!("audio-code: could not save storage: {e}");
         }
@@ -681,6 +743,51 @@ mod tests {
             *log.borrow(),
             ["a start", "a update", "a pause", "b start", "b update", "b end", "a resume", "a update"]
         );
+    }
+
+    use crate::net::Packet;
+
+    struct NetLog(Rc<RefCell<Vec<String>>>);
+
+    impl Scene for NetLog {
+        fn update(&mut self, ctx: &mut Context) {
+            for (from, packet) in ctx.net.received("hi") {
+                ctx.net.send(from, Packet::new("echo").with(packet.int(0)));
+            }
+        }
+        fn on_net(&mut self, event: &NetEvent, _: &mut Context) {
+            self.0.borrow_mut().push(format!("{event:?}"));
+        }
+    }
+
+    #[test]
+    fn network_events_reach_scenes() {
+        use crate::net::PeerId;
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let mut server = Engine::new("net").headless().build(NetLog(log.clone()));
+        let mut client = Engine::new("net").headless().build_fn(|_| {});
+        server.frame();
+        client.frame();
+        server.ctx.net.host(0).unwrap();
+        client.ctx.net.join(&format!("127.0.0.1:{}", server.ctx.net.port().unwrap()));
+        let start = Instant::now();
+        let mut echoed = None;
+        while echoed.is_none() || client.ctx.net.ping(PeerId::SERVER) == 0.0 {
+            assert!(start.elapsed() < Duration::from_secs(8), "no answer");
+            server.frame();
+            client.frame();
+            if client.ctx.net.joined() == [PeerId::SERVER] {
+                client.ctx.net.send_all(Packet::new("hi").with(7));
+            }
+            if let Some((_, p)) = client.ctx.net.received("echo").first() {
+                echoed = Some(p.int(0));
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(echoed, Some(7));
+        let log = log.borrow();
+        assert_eq!(log[0], "Connected(PeerId(1))");
+        assert!(log[1].starts_with("Message(PeerId(1)"));
     }
 
     #[test]

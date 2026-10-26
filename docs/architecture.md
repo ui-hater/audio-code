@@ -13,9 +13,11 @@ has the short version.
                      │                 ▲  drains commands              ▲
                      ▼                 │  each audio block             │ Speak, Stop, ...
    your Scene ◄──► Context ── Audio ───┘ (channel)                     │
-                            └ Speech ──────────────────────────────────┘ (channel)
+                            ├ Speech ──────────────────────────────────┘ (channel)
+                            └ Net ◄── events ── network threads (channel)
 
- background threads: one per music file being decoded
+ background threads: one per music file being decoded; while online, an accept thread
+ (host) plus one thread per connection
 ```
 
 Your code always runs on the main thread and only touches `Context`. The other threads are
@@ -40,10 +42,13 @@ reached through channels. No game code ever holds a lock.
 2. `time.advance(now)`. The delta is clamped to 0.25 s, so a debugger pause does not shoot
    bodies through walls. The scheduler fires named events here.
 3. `input.begin_frame(now)` turns the queued key events into this frame's
-   pressed/released/held sets.
+   pressed/released/held sets. `net.update()` turns what the network threads reported into
+   this frame's `NetEvent`s.
 4. `ui.update(...)` runs the top widget (it gets `&ctx.lang` for its own texts). If a
    widget is open, `input` is set to *blocked*.
-5. Each UI event is given to `Scene::on_ui`.
+5. Each UI event is given to `Scene::on_ui`, then each network event to `Scene::on_net`.
+   The network events are taken out of `ctx.net` for the calls and put back afterwards, so
+   `ctx.net.received(..)` still sees them in `update`.
 6. `physics.clear_events()`, then physics steps at a fixed rate with an accumulator (at most
    8 steps per frame, so a slow machine cannot spiral). `fixed_update` runs after each step.
 7. `Scene::update`.
@@ -51,7 +56,8 @@ reached through channels. No game code ever holds a lock.
    then `ctx.sync_vehicles()` updates engine loops and plays shift and crash sounds.
 9. `apply_change()` applies `push_scene` / `pop_scene` / `switch_scene`. It loops, because a
    scene's `start` may request another change.
-10. If `ctx.quit()` was called: `shutdown()` ends all scenes and saves `ctx.storage`.
+10. If `ctx.quit()` was called: `shutdown()` ends all scenes, closes `ctx.net` (the others
+    are told) and saves `ctx.storage`.
 
 Physics events are cleared once per frame (not per step), so events from every step of the
 frame are still visible in `update`.
@@ -392,6 +398,85 @@ to decrypt or is not text is renamed to `<file>.broken` before anything can over
 if the rename fails, saving is disabled. The reason is kept in `load_error`. `Debug` never
 prints the key.
 
+## Network (`net/`)
+
+`ctx.net` is in one of four states: offline, hosting, joining or joined. The game thread
+never blocks on a socket.
+
+**Threads.** `host` binds a `TcpListener`, makes it non-blocking and starts the accept
+thread, which polls it every 15 ms and stops when the shared stop flag is set (so the port
+is free again after `close`). Each accepted socket gets its own thread, which does the
+WebSocket upgrade, the key exchange and reads the hello, then runs the connection. `join`
+starts a connect thread that parses the address (`host[:port]`, `ws://`, `wss://`), resolves
+it (IPv4 first), connects with a 5 s timeout, upgrades to a WebSocket (with TLS for
+`wss://`: rustls with the ring backend and the webpki roots), exchanges keys, sends the
+hello and waits for the welcome, then runs the connection too. Handshake reads block with a
+5 s timeout; when one times out, the connection is given up anyway.
+
+One thread runs each open connection (`run`):
+
+- The socket is switched to **non-blocking**. A short read timeout would be simpler, but on
+  Windows a socket whose read timed out is broken (error 10053 on the next write).
+- Each round reads every message that arrived until "would block". Pings are answered at
+  once, so the measured round trip does not depend on the frame rate. Pongs, data and the
+  end of the connection become `wire::Event`s. Then it sends a ping if a second has passed,
+  and waits up to 2 ms on its queue for frames from the game (`recv_timeout`), so outgoing
+  packets leave at once and incoming ones are seen within 2 ms.
+- The queue carries already encoded frames (`Arc<[u8]>`, so a broadcast is encoded once);
+  each connection encrypts them with its own keys. Writes that "would block" stay in the
+  WebSocket's buffer and go out with a later flush.
+- `Out::Close` (from `close` or `kick`, after the bye) closes the WebSocket and keeps reading
+  for up to a second, so the other side receives the bye before the socket goes away.
+- All threads of one session send their events into one mpsc channel. `close`, `host` and
+  `join` replace the channel, so threads of an old session can no longer reach the game and
+  end when they notice.
+
+**Encryption** (`crypto.rs`). Each side makes an X25519 key pair per connection (32 random
+bytes from `getrandom`). The first WebSocket message of each side is `AUDIOCD2` plus its
+public key, in the clear. A key that gives a non-contributory shared secret (a low-order
+point) is refused. Two keys are derived with SHA-256 over a direction label, the shared
+secret and both public keys: one for client to server, one for server to client. Every
+later message is sealed with XChaCha20-Poly1305; the nonce is a per-direction message
+counter, the associated data a fixed protocol label. TCP keeps the order, so a message that
+does not open with the next counter was changed, repeated or dropped, and the connection
+ends with `Reason::Lost`. Fresh keys per connection give forward secrecy. Nothing
+authenticates the server's key, so an active attacker in the middle is only kept out by
+`wss://` with a real certificate (see [online.md](online.md#websockets-and-encryption)).
+
+**Wire format** (`wire.rs`). Every WebSocket message is binary, at most 1 MiB plus the
+encryption tag (`WebSocketConfig::max_message_size`). After the two key messages, each
+message decrypts to one frame, a tag byte and its body:
+
+| Tag | Frame | Body |
+|-----|-------|------|
+| 0 | hello | protocol `u16`, game title, game version, name |
+| 1 | welcome | the client's id `u32`, the host's name |
+| 2 / 3 | ping / pong | microseconds since the connection started, `u64` |
+| 4 | data | a `Packet`: kind, value count, then a type byte and the value for each |
+| 5 | bye | reason code `u8` and text |
+
+Texts are a `u32` length plus UTF-8. An HTTP request that is not a WebSocket upgrade, a
+first message without the magic, or anything that does not decrypt closes the connection
+without an answer, so other programs that connect by mistake are dropped. A browser or a
+program in another language can join by speaking the same protocol (libsodium has X25519
+and XChaCha20-Poly1305).
+
+**Handshake.** The host checks each hello on the game thread: game title, version and
+protocol, then the player limit. A refused client gets a bye with the reason
+(`WrongGame`, `WrongVersion`, `ServerFull`); an accepted one gets a welcome with its id, and
+only then counts as connected and produces `Connected`. Ids are counted up by the accept
+thread and never reused while it runs.
+
+**Events.** `Net::update` drains the channel at the start of the frame and builds the
+frame's `NetEvent` list. Events that the game itself causes in the middle of a frame (`kick`)
+go into `pending` and appear next frame, so they are not cleared before anyone sees them.
+`joined`, `left`, `messages` and `received` return owned lists, so game code can call
+`ctx.net.send` or `ctx.speak` inside the loop.
+
+**Dedicated server.** `Engine::run_server` sets a `server` flag (silent audio and console
+speech like `headless`, but the real save file) and drives `Runner::frame` in a plain loop
+with `thread::sleep` until the game quits.
+
 ## Design decisions
 
 - **Own mixer instead of an audio library.** Full control over 3D panning, the behind-the-
@@ -406,6 +491,14 @@ prints the key.
   who prefer callbacks.
 - **Warnings instead of errors for missing assets.** A game keeps running with one missing
   sound, and the warning names the file.
+- **WebSockets and host authority for online play.** Audio games send few updates, so
+  reliable, ordered delivery matters more than the last milliseconds. WebSockets give that
+  without a custom resend layer, pass restrictive firewalls, and fit behind ordinary web
+  servers for TLS. A host that decides everything keeps the clients simple and cheating
+  hard.
+- **Own encryption on top of the WebSocket.** It needs no certificates and no setup, also
+  for a player hosting at home, so every game is encrypted. TLS (`wss://`) is added where a
+  server has to prove who it is.
 - **Backends only feed the Runner.** That makes headless tests trivial, and new backends
   (SDL, a terminal, ...) only need key events and a timer.
 

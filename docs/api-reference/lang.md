@@ -230,4 +230,15 @@ if let Some(car) = ctx.physics.vehicle(player) {
 }
 ```
 
+### `ctx.lang.describe_reason(reason: &Reason) -> String`
+
+Why a network connection ended, as a sentence in the current language: `"The server is
+full"`, `"Der Server ist voll"`. See [net.md](net.md#reason).
+
+```rust
+for (_, reason) in ctx.net.left() {
+    ctx.speak(ctx.lang.describe_reason(&reason));
+}
+```
+
 The keys of all engine texts are listed in [translations.md](../translations.md#engine-texts).

@@ -1,8 +1,8 @@
 [package]
 name = "audio-code"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
-description = "A simple, high level game engine for audio games: 3D sound, speech, virtual menus, physics and timing. No graphics required."
+description = "A simple, high level game engine for audio games: 3D sound, speech, virtual menus, physics, timing and online play. No graphics required."
 license = "MIT"
 repository = "https://github.com/ui-hater/audio-code"
 readme = "README.md"
@@ -10,12 +10,15 @@ keywords = ["audiogame", "accessibility", "gamedev", "audio", "screen-reader"]
 categories = ["game-engines", "accessibility", "multimedia::audio"]
 
 [features]
-default = ["prism", "macos"]
+default = ["prism", "macos", "tls"]
 ## Speech and braille output through screen readers / TTS via the prism library (needs CMake and a C++23 compiler).
 prism = ["dep:prismer"]
 ## macOS only: speak through VoiceOver (accessibility announcements) or the system voice
 ## (AVSpeechSynthesizer) when prism is unavailable.
 macos = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-app-kit", "dep:objc2-avf-audio", "dep:dispatch2"]
+## Join servers behind TLS with `wss://` addresses (rustls with the ring backend and the Mozilla
+## root certificates). Without it, `ws://` and plain addresses still work and are encrypted.
+tls = ["dep:rustls", "dep:webpki-roots", "tungstenite/rustls-tls-webpki-roots"]
 ## Run games inside a wxWidgets window (via wxDragon) instead of the built-in winit window.
 wxdragon = ["dep:wxdragon"]
 
@@ -26,10 +29,14 @@ fastrand = "2.5.0"
 getrandom = "0.4"
 glam = "0.34.1"
 prismer = { version = "0.1.4", optional = true }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["std", "ring", "tls12"] }
 sha2 = "0.11"
 sys-locale = "0.3.2"
 symphonia = { version = "0.6.1", features = ["all"] }
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+webpki-roots = { version = "0.26", optional = true }
 winit = "0.30.13"
+x25519-dalek = { version = "3", features = ["static_secrets"] }
 wxdragon = { version = "0.9.23", optional = true }
 
 [[example]]

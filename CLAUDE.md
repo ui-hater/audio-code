@@ -18,7 +18,7 @@ cargo test
 cargo test   physics::tests::jump_reaches_height   # single test (path filter)
 cargo clippy --features wxdragon --all-targets  # must stay warning-free
 RUSTDOCFLAGS="-D warnings" cargo doc --features wxdragon --no-deps
-cargo run    --example menus      # hello, clicker, menus, beacon, bell_catcher, platformer, flight, driving
+cargo run    --example menus      # hello, clicker, menus, beacon, bell_catcher, platformer, flight, driving, online
 cargo run    --features wxdragon --example wx_game
 ```
 
@@ -26,20 +26,21 @@ cargo run    --features wxdragon --example wx_game
 - Run clippy for each feature combination you touch: `--no-default-features`, default (`prism`), `wxdragon`. `cfg`-gated code easily produces dead-code or unused-mut warnings in one combination only.
 - Feature-gated items (`wx`, `Engine::run_wx`) must not be intra-doc linked from ungated docs. Write them as plain code text.
 - Examples open a real window and audio device and run until Escape. For smoke tests, build first and then run the exe with `timeout`, because linking inside `timeout cargo run` gets killed. The windows can steal keyboard focus from the user.
-- macOS code (`src/speech/macos.rs`, feature `macos`) is checked from Windows with `PRISM_LIB_DIR=. cargo clippy --target aarch64-apple-darwin --all-targets` (targets are installed). A `.app` is built with `scripts/macos_app.py` via cargo-zigbuild (zig 0.13 from pip, `SDKROOT` pointing to a macOS SDK); see `docs/macos.md`. cargo-zigbuild leaves a `.intentionally-empty-file.o` in the repo root; delete it, never commit it.
+- macOS code (`src/speech/macos.rs`, feature `macos`) is checked from Windows with `PRISM_LIB_DIR=. cargo clippy --target aarch64-apple-darwin --all-targets --no-default-features --features prism,macos` (targets are installed; `tls` is left out because ring needs a C cross compiler there). A `.app` is built with `scripts/macos_app.py` via cargo-zigbuild (zig 0.13 from pip, `SDKROOT` pointing to a macOS SDK); see `docs/macos.md`. cargo-zigbuild leaves a `.intentionally-empty-file.o` in the repo root; delete it, never commit it.
 - Tests that need an engine use `Engine::new(..).headless().build(scene)`, which gives a silent audio system, console speech and no window, and drive it with `runner.frame()` / `runner.key_down(..)`. UI tests use the `Harness` in `src/ui/mod.rs`.
 
 ## Features
 
 - `prism` (default): speech via the `prismer` crate. Its `prism-sys` builds prism C++ with CMake as a shared library.
 - `macos` (default, macOS only): VoiceOver announcements or `AVSpeechSynthesizer` when prism is unavailable.
+- `tls` (default): `wss://` for `ctx.net.join` via rustls (ring backend) and webpki roots. Connections are encrypted without it too.
 - `wxdragon`: wxWidgets backend (`src/wx.rs`). The first build compiles wxWidgets and is slow.
 
 ## Architecture
 
 **Frame loop** (`src/engine.rs`). `Runner` owns the `Context` and a stack of `Box<dyn Scene>`. Window backends only feed key/text events into the `Runner` and call `Runner::frame()`. There are two backends: `src/window.rs` (winit, default) and `src/wx.rs` (frame char-hook plus a `wx Timer`, with state in `Rc<RefCell<State>>`). Order inside `frame()`:
 
-`time.advance` → `input.begin_frame` → `ui.update` (if a widget is open, `input` is set to *blocked*) → `scene.on_ui` per UI event → fixed-rate loop of `physics.step` + `scene.fixed_update` → `scene.update` → `ctx.sync_world()` (listener follows `ctx.follow` body, attached sounds move with or stop with their bodies) → apply pending scene changes (push/pop/switch, collected in `ctx.change`). `Runner::shutdown` saves `ctx.storage`.
+`time.advance` → `input.begin_frame` → `net.update` → `ui.update` (if a widget is open, `input` is set to *blocked*) → `scene.on_ui` per UI event → `scene.on_net` per network event → fixed-rate loop of `physics.step` + `scene.fixed_update` → `scene.update` → `ctx.sync_world()` (listener follows `ctx.follow` body, attached sounds move with or stop with their bodies) → apply pending scene changes (push/pop/switch, collected in `ctx.change`). `Runner::shutdown` saves `ctx.storage`.
 
 `Engine::run_with(|ctx| Scene)` wraps the first scene in a private `Lazy` scene, so its constructor can use the context. `audio_code::run` / `Engine::run_fn` wrap a closure in `FnScene`.
 
@@ -71,6 +72,8 @@ cargo run    --features wxdragon --example wx_game
 - `bounce` handles momentum and restitution and returns the impact speed for `CollisionStarted` and `Landed` events.
 - `move_by` is the immediate, sliding "character controller" API.
 - Vehicles (`src/vehicle.rs`) are an optional `Body::vehicle`. `step` drives them first (`step_vehicle`: simulate pedals, gears, fuel, then `move_by`; a blocked move removes the speed into the obstacle and emits `Crashed`). `Context::sync_vehicles` runs once per frame and keeps engine loops and shift/crash sounds in sync.
+
+**Network** (`src/net/`): `ctx.net` (`Net`) is offline, hosting, joining or joined. WebSockets via `tungstenite` (sync). The first binary message of each side is `AUDIOCD2` + an X25519 public key; every later message is one encrypted frame (`crypto.rs`: XChaCha20-Poly1305, one key per direction, counter nonces; `wire.rs`: hello/welcome, ping/pong, data, bye with a `Reason`). The accept thread polls a non-blocking listener and checks a stop flag. Every connection has one thread (`wire::run`) on a **non-blocking** socket: never use short read timeouts there, because on Windows a timed-out socket breaks (error 10053). It reads until would-block, pings every second, then waits 2 ms on its queue. `wss://` (feature `tls`, rustls with ring) is client-only; servers use a reverse proxy for TLS. Threads report `wire::Event`s over one mpsc channel per session; `close`/`host`/`join` replace the channel, so stale threads are ignored. The game thread validates hellos (game title, version, protocol, max players). `Net::update` turns reports into `NetEvent`s for one frame; events the game makes itself (kick) wait in `pending` until the next frame. Net tests use real sockets on `127.0.0.1` with port 0.
 
 **Conventions shared across modules** (`src/math.rs`):
 - z is up, +y is north, +x is east.

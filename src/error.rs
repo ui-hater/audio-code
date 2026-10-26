@@ -13,6 +13,8 @@ pub enum Error {
     Audio(String),
     /// The window or event loop could not be created.
     Window(String),
+    /// A network server could not be started.
+    Net(String),
 }
 
 /// Shorthand for `std::result::Result<T, audio_code::Error>`.
@@ -25,6 +27,7 @@ impl fmt::Display for Error {
             Error::Decode(e) => write!(f, "could not decode sound: {e}"),
             Error::Audio(e) => write!(f, "audio device error: {e}"),
             Error::Window(e) => write!(f, "window error: {e}"),
+            Error::Net(e) => write!(f, "network error: {e}"),
         }
     }
 }

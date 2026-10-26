@@ -127,6 +127,24 @@ Encrypt the save file (optional): `Engine::new("My game").encrypt_save("secret w
 it cannot be read, `ctx.storage.load_error()` says why and the file is kept as
 `<file>.broken`.
 
+## Online play
+
+```rust
+ctx.net.set_name("Anna");                              // before hosting or joining
+ctx.net.host(net::DEFAULT_PORT)?;                      // host on port 7777
+ctx.net.join("example.com");                           // or "192.168.1.20:7777", "wss://example.com/game"
+ctx.net.send_all(Packet::new("move").with(position));  // client: to the host
+ctx.net.send_all_except(from, packet);                 // host: pass it on
+for player in ctx.net.joined() { ctx.speak(format!("{} joined", ctx.net.name(player))); }
+for (from, p) in ctx.net.received("move") { let pos = p.vec3(0); }
+for (_, reason) in ctx.net.left() { ctx.speak(ctx.lang.describe_reason(&reason)); }
+ctx.net.ping(PeerId::SERVER);                          // round trip in seconds
+ctx.net.set_version("1.2");                            // only the same version can join
+Engine::new("My game").run_server(Server)?;            // dedicated server, no window
+```
+
+Details in [Online play](online.md).
+
 ## Translations
 
 ```text

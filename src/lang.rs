@@ -46,6 +46,7 @@ use std::path::Path;
 use glam::Vec3;
 
 use crate::math::{angle_difference, bearing, clock_position};
+use crate::net::Reason;
 use crate::vehicle::Vehicle;
 
 /// The translation tables and the current language. Reach it through `ctx.lang`.
@@ -260,6 +261,32 @@ impl Lang {
         if vehicle.is_reversing() { self.format("vehicle.reversing", &[("speed", &speed)]) } else { speed }
     }
 
+    /// Why a network connection ended, as a sentence in the current language, e.g.
+    /// `"The server is full"`.
+    ///
+    /// ```no_run
+    /// # use audio_code::prelude::*;
+    /// # fn f(ctx: &mut Context) {
+    /// for (_, reason) in ctx.net.left() {
+    ///     ctx.speak(ctx.lang.describe_reason(&reason));
+    /// }
+    /// # }
+    /// ```
+    pub fn describe_reason(&self, reason: &Reason) -> String {
+        match reason {
+            Reason::Left => self.get("net.left"),
+            Reason::Closed => self.get("net.closed"),
+            Reason::Kicked(text) if text.is_empty() => self.get("net.kicked"),
+            Reason::Kicked(text) => self.format("net.kicked_reason", &[("reason", text)]),
+            Reason::ServerFull => self.get("net.server_full"),
+            Reason::WrongGame(game) => self.format("net.wrong_game", &[("game", game)]),
+            Reason::WrongVersion(version) => self.format("net.wrong_version", &[("version", version)]),
+            Reason::TimedOut => self.get("net.timed_out"),
+            Reason::Failed(error) => self.format("net.failed", &[("error", error)]),
+            Reason::Lost(error) => self.format("net.lost", &[("error", error)]),
+        }
+    }
+
     fn lookup(&self, key: &str) -> Option<&str> {
         let table = |code: &str| self.tables.get(code).and_then(|t| t.get(key)).map(String::as_str);
         table(&self.current)
@@ -352,6 +379,16 @@ fn builtin(code: &str, key: &str) -> Option<&'static str> {
             "unit.kmh.one" => "1 kilometer per hour",
             "unit.kmh.other" => "{n} kilometers per hour",
             "vehicle.reversing" => "reversing, {speed}",
+            "net.left" => "Left the game",
+            "net.closed" => "The server was closed",
+            "net.kicked" => "Kicked from the server",
+            "net.kicked_reason" => "Kicked from the server: {reason}",
+            "net.server_full" => "The server is full",
+            "net.wrong_game" => "This server runs another game: {game}",
+            "net.wrong_version" => "Wrong game version. The server has version {version}",
+            "net.timed_out" => "The connection timed out",
+            "net.failed" => "Could not connect: {error}",
+            "net.lost" => "Connection lost: {error}",
             _ => return None,
         },
         "de" => match key {
@@ -401,6 +438,16 @@ fn builtin(code: &str, key: &str) -> Option<&'static str> {
             "unit.kmh.one" => "1 Kilometer pro Stunde",
             "unit.kmh.other" => "{n} Kilometer pro Stunde",
             "vehicle.reversing" => "rückwärts, {speed}",
+            "net.left" => "Hat das Spiel verlassen",
+            "net.closed" => "Der Server wurde geschlossen",
+            "net.kicked" => "Vom Server geworfen",
+            "net.kicked_reason" => "Vom Server geworfen: {reason}",
+            "net.server_full" => "Der Server ist voll",
+            "net.wrong_game" => "Auf diesem Server läuft ein anderes Spiel: {game}",
+            "net.wrong_version" => "Falsche Spielversion. Der Server hat Version {version}",
+            "net.timed_out" => "Zeitüberschreitung der Verbindung",
+            "net.failed" => "Verbindung fehlgeschlagen: {error}",
+            "net.lost" => "Verbindung verloren: {error}",
             _ => return None,
         },
         _ => return None,
@@ -451,6 +498,8 @@ mod tests {
         assert_eq!(lang.get("ui.checked"), "aktiviert");
         assert_eq!(lang.describe_position(Vec3::ZERO, 0.0, Vec3::new(5.0, 0.0, 0.0)), "3 Uhr, 5 Meter");
         assert_eq!(lang.describe_position(Vec3::ZERO, 0.0, Vec3::new(0.0, 0.0, -1.0)), "direkt darunter, 1 Meter");
+        assert_eq!(lang.describe_reason(&Reason::ServerFull), "Der Server ist voll");
+        assert_eq!(lang.describe_reason(&Reason::Kicked("Spam".into())), "Vom Server geworfen: Spam");
         assert_eq!(lang.direction_name(180.0), "Süden");
         lang.insert("de", "ui.checked", "an");
         assert_eq!(lang.get("ui.checked"), "an", "game texts win over built in ones");

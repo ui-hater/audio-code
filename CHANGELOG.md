@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.3.0
+
+- Online play (`audio_code::net`, `ctx.net`): `host(port)`, `join(address)` (port optional,
+  default `net::DEFAULT_PORT` = 7777), `close`, `kick`, `send`, `send_all`,
+  `send_all_except`
+- `Packet`: a kind plus typed values (numbers, `bool`, text, `Vec2`, `Vec3`, `PeerId`,
+  bytes) with lenient getters (`int`, `float`, `bool`, `text`, `vec2`, `vec3`, `peer`,
+  `bytes`) that never panic; text converts into a packet without values
+- `NetEvent` (`Connected`, `Message`, `Disconnected`) for one frame, with the helpers
+  `joined`, `left`, `messages`, `received(kind)`, and the new `Scene::on_net` callback
+- Player names (`set_name`, `name`), ids (`PeerId`, `id`), `players`, `player_count`,
+  round trip time (`ping`), `is_host`, `is_client`, `is_joining`, `is_online`, `port`,
+  `Net::local_ip`
+- The host only lets in clients of the same game (engine title) and version
+  (`set_version`), up to `set_max_players` (default 32). Everything runs on background
+  threads, both sides ping every second and close silent connections after 10 seconds.
+- `Reason` says why a connection ended; `Lang::describe_reason` speaks it in English or
+  German (new `net.*` keys)
+- `Engine::run_server` / `run_server_fn`: a dedicated server without window or sound, with
+  console speech and a saved storage
+- Connections are WebSockets (`tungstenite`): they pass firewalls that only allow web
+  traffic and can run behind a web server. `join` also takes `ws://` and `wss://` URLs.
+- Always encrypted: an X25519 key exchange per connection, then XChaCha20-Poly1305 with one
+  key per direction and counting nonces. Changed, repeated or missing messages close the
+  connection.
+- New default feature `tls`: `wss://` with certificate checks (rustls with ring, Mozilla
+  root certificates), for servers behind a web server with a TLS certificate
+- `Error::Net`
+- `online` example, `docs/online.md`, `docs/api-reference/net.md`
+
 ## 0.2.1
 
 - prism is no longer linked statically. It is built as a shared library, so games ship

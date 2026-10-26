@@ -10,6 +10,8 @@
 //! * **Vehicles**: cars and trucks with weight, speed, gears, brakes and fuel ([`vehicle`])
 //! * **Time**: frame timing, a scheduler, timers, cooldowns and intervals ([`time`])
 //! * **Input**: pressed / held / released, custom key repeat, typed text ([`input`])
+//! * **Online play**: host or join games over encrypted WebSockets, send packets, pings and
+//!   timeouts built in ([`net`])
 //! * **Translations**: one text file per language, engine texts in English and German ([`lang`])
 //! * Optional **wxWidgets** integration through wxDragon (`audio_code::wx`, feature `wxdragon`)
 //!
@@ -61,6 +63,7 @@ pub mod input;
 pub mod lang;
 pub mod level;
 pub mod math;
+pub mod net;
 pub mod physics;
 mod shortcuts;
 pub mod speech;
@@ -116,6 +119,7 @@ pub mod prelude {
     pub use crate::lang::Lang;
     pub use crate::level::Level;
     pub use crate::math::{self, Vec2, Vec3, random, vec2, vec3};
+    pub use crate::net::{self, Net, NetEvent, Packet, PeerId, Reason};
     pub use crate::physics::{Body, BodyId, BodyKind, EARTH_GRAVITY, MoveResult, PhysicsEvent, RayHit, Shape, World};
     pub use crate::speech::{Speech, Voice};
     pub use crate::storage::Storage;

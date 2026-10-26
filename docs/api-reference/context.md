@@ -16,6 +16,7 @@ scenes, and offers shortcuts for the most common calls.
 | `ctx.physics` | `World` | [physics.md](physics.md) |
 | `ctx.storage` | `Storage` | [storage.md](storage.md) |
 | `ctx.lang` | `Lang` | [lang.md](lang.md) |
+| `ctx.net` | `Net` | [net.md](net.md) |
 
 The fields are separate, so you can borrow two of them at once:
 

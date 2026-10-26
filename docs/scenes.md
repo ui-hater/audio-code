@@ -8,13 +8,14 @@ impl Scene for Level {
     fn update(&mut self, ctx: &mut Context) {}         // every frame (required)
     fn fixed_update(&mut self, ctx: &mut Context) {}   // after every physics step
     fn on_ui(&mut self, e: &UiEvent, ctx: &mut Context) {} // for each UI event
+    fn on_net(&mut self, e: &NetEvent, ctx: &mut Context) {} // for each network event
     fn pause(&mut self, ctx: &mut Context) {}          // another scene was pushed on top
     fn resume(&mut self, ctx: &mut Context) {}         // back on top
     fn end(&mut self, ctx: &mut Context) {}            // removed or game quits
 }
 ```
 
-Each frame runs in this order: input → UI → `on_ui` → physics steps with `fixed_update` →
+Each frame runs in this order: input and network → UI → `on_ui` → `on_net` → physics steps with `fixed_update` →
 `update` → scene changes.
 
 ## Switching scenes

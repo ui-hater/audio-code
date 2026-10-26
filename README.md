@@ -22,6 +22,7 @@ make the common things one line long:
 | **Input** | Pressed / held / released keys, key repeat with your own timing, typed text, direction helpers. |
 | **Scenes** | Main menu, levels and pause screens as a stack. Shared data between scenes. |
 | **Translations** | One text file per language (`lang/de.txt`), `ctx.tr("key")`, placeholders and plurals, the system language picked automatically. Menus, dialogs and directions speak English or German out of the box. |
+| **Online play** | `ctx.net.host(port)` / `ctx.net.join("example.com")` over WebSockets, always encrypted, `wss://` with TLS certificates, packets with typed values, events for joining, messages and leaving, player names, game and version checks, pings, timeouts, kicking, dedicated servers without a window. |
 | **Saving** | `ctx.storage` stores high scores and settings and writes them when the game quits. Optionally encrypted, so players cannot edit their save. |
 | **Windows** | Runs on Windows, macOS and Linux. A plain window (winit) by default, or a native wxWidgets window via [wxDragon](https://crates.io/crates/wxdragon). |
 
@@ -247,6 +248,7 @@ A scene is a struct implementing `Scene`. Only `update` is required:
 | `update` | every frame |
 | `fixed_update` | at a fixed rate, right after each physics step |
 | `on_ui` | for every UI event (menu item pressed, value changed, ...) |
+| `on_net` | for every network event (player joined, packet arrived, player left) |
 | `pause` / `resume` | when another scene is pushed on top / popped again |
 | `end` | when the scene is removed or the game quits |
 
@@ -269,6 +271,7 @@ fields:
 | `ctx.physics` | `World` | bodies, collisions, events |
 | `ctx.storage` | `Storage` | saved values |
 | `ctx.lang` | `Lang` | translations, current language |
+| `ctx.net` | `Net` | online play: host, join, send packets |
 
 On top of that, `ctx` has shortcuts for the most common calls: `speak`, `play`, `play_at`,
 `pressed`, `held`, `once`, `follow`, `loop_on`, `play_on`, `attach`, `tr`, `describe`. It also stores data
@@ -279,11 +282,12 @@ shared between scenes with `ctx.insert(value)` / `ctx.get::<T>()`.
 Each frame runs in this order. Knowing it explains most behavior:
 
 1. **Time** advances (`ctx.time.delta()` is the time since the last frame).
-2. **Input** collects the keys pressed since the last frame.
+2. **Input** collects the keys pressed since the last frame, and **network** events
+   (players joining, packets, players leaving) are collected.
 3. **UI**: if a menu or dialog is open, it handles the keys, speaks and plays its sounds.
    While a widget is open, your game sees no key presses, so Enter on a menu item does not
    also make your character jump.
-4. **`on_ui`** is called for each UI event.
+4. **`on_ui`** is called for each UI event, then **`on_net`** for each network event.
 5. **Physics** steps at its fixed rate (possibly several times in one frame), each step
    followed by `fixed_update`.
 6. **`update`** runs your game logic.
@@ -351,6 +355,7 @@ Speech is then printed to the console (or goes to VoiceOver / the system voice o
 |------------|---------|--------------|
 | `prism`    | yes     | Speech and braille through screen readers and system voices. |
 | `macos`    | yes     | macOS: speech through VoiceOver announcements or the system voice (`AVSpeechSynthesizer`) when prism is unavailable. |
+| `tls`      | yes     | `wss://` addresses for `ctx.net.join`: TLS with certificate checks (rustls). Connections are encrypted without it too. |
 | `wxdragon` | no      | `Engine::run_wx` and `audio_code::wx` for native wxWidgets windows. |
 
 If no speech output is available at all, speech is printed to the console and the game keeps
@@ -371,6 +376,7 @@ the 3D sound.
 | `flight` | full 3D: fly a drone, look up and down, find birds at different heights |
 | `bell_catcher` | a complete small game: catch falling bells by ear, voice and speech rate menu, saved best score |
 | `driving` | drive a car or a truck through a town: gears, reverse, horn, fuel, loading the truck, crashes |
+| `online` | an online game: host or join, hear the other players walk, chat, ping |
 | `wx_game` | a game inside a wxWidgets window next to a native button |
 
 ```sh
@@ -410,6 +416,11 @@ src/
 ├── input.rs        Key, Input (pressed/held/released, repeat, text)
 ├── time.rs         Time (frame time + scheduler), Timer, Cooldown, Interval
 ├── storage.rs      key-value saving
+├── net/
+│   ├── mod.rs      Net (ctx.net): hosting, joining, sending, events, PeerId, Reason
+│   ├── packet.rs   Packet and its binary encoding
+│   ├── crypto.rs   key exchange and encryption of every connection
+│   └── wire.rs     WebSockets, the protocol and the connection threads
 ├── lang.rs         translations: language files, lookup, built in engine texts
 ├── math.rs         coordinate conventions, angles, directions, random helpers
 └── error.rs        Error and Result
@@ -427,7 +438,8 @@ deal with locks or channels yourself.
                      │                 ▲  drains commands              ▲
                      ▼                 │  each audio block             │ Speak, Stop, ...
    your Scene ◄──► Context ── Audio ───┘ (channel)                     │
-                            └ Speech ──────────────────────────────────┘ (channel)
+                            ├ Speech ──────────────────────────────────┘ (channel)
+                            └ Net ◄──► network threads (one per connection)
 ```
 
 **Window and frame loop.** The window backend (`window.rs` or `wx.rs`) knows nothing about
@@ -480,6 +492,15 @@ predictable. Each step:
 `move_by` / `move_forward` use the same push-out logic right away, which makes them a
 simple character controller.
 
+**Online play.** `ctx.net` never waits for the network. Hosting starts a thread that
+accepts connections; every connection gets its own thread, which sends what the game
+queued, reads what arrived, and pings once a second. At the start of each frame the game
+thread takes the collected events, which is why `ctx.net.received(..)` works like
+`ctx.pressed(..)`. Connections are WebSockets (over TCP, so packets arrive complete and in
+order). The first two messages exchange fresh X25519 keys; everything after is encrypted
+with XChaCha20-Poly1305. A new client then says hello with the game title, its version and
+its name; the host checks them before the player counts as connected.
+
 More detail, including design decisions, is in [docs/architecture.md](docs/architecture.md).
 
 ## Developing audio-code
@@ -507,6 +528,7 @@ gives silent audio and console speech, and drive frames by hand with `Runner::fr
 - [Positions, directions and 3D](docs/3d.md): what `vec3(x, y, z)` means, angles, flying, sound above and below
 - [Time and input](docs/time-and-input.md): delta time, scheduler, timers, keys
 - [Scenes, shared data and saving](docs/scenes.md)
+- [Online play](docs/online.md): hosting, joining, WebSockets and encryption, packets, who decides what, dedicated servers
 - [Translations](docs/translations.md): language files, placeholders, plurals, a language menu, engine texts
 - [wxDragon integration](docs/wxdragon.md)
 - [Architecture](docs/architecture.md): how the engine works inside

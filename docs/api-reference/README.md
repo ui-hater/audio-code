@@ -12,7 +12,7 @@ is the dictionary next to them: short, complete and in a fixed format.
 
 | Page | Covers |
 |------|--------|
-| [engine.md](engine.md) | `audio_code::run`, `Engine` (configuration and start), `Scene`, `Runner`, `Error`, `Result`, the prelude |
+| [engine.md](engine.md) | `audio_code::run`, `Engine` (configuration, start, dedicated servers), `Scene`, `Runner`, `Error`, `Result`, the prelude |
 | [context.md](context.md) | `Context`: fields, quitting, scene changes, shared data, shortcuts (`speak`, `play`, `once`, `follow`, `loop_on`, ...) |
 | [audio.md](audio.md) | `Audio` (`ctx.audio`), `SoundBuilder`, `Sound`, `Group`, `SoundData`, `Synth`, `Wave` |
 | [speech.md](speech.md) | `Speech` (`ctx.speech`) |
@@ -24,6 +24,7 @@ is the dictionary next to them: short, complete and in a fixed format.
 | [ui.md](ui.md) | `Ui` (`ctx.ui`), `Menu`, `MenuItem`, `ItemKind`, `Message`, `Confirm`, `TextInput`, `Value`, `UiEvent`, `UiSound`, `UiSounds`, `Widget`, `Status`, `UiContext` |
 | [math.md](math.md) | `Vec2`, `Vec3`, `vec2`, `vec3`, angle and direction helpers, decibels, `math::random` |
 | [storage.md](storage.md) | `Storage` (`ctx.storage`) |
+| [net.md](net.md) | online play: `Net` (`ctx.net`), `Packet`, `Arg`, `PeerId`, `NetEvent`, `Reason`, `net::DEFAULT_PORT` |
 | [lang.md](lang.md) | translations: `Lang` (`ctx.lang`), `ctx.tr`, `ctx.tr_with`, `ctx.set_language`, `ctx.describe` |
 | [wx.md](wx.md) | wxDragon backend (feature `wxdragon`): `Engine::run_wx`, `GameHost` |
 
@@ -116,4 +117,5 @@ Where to find a function by name:
 | `ctx.ui.open`, `message`, `confirm`, `input`, `clicked`, `changed`, `confirmed`, `submitted`, `Menu::*` | [ui.md](ui.md) |
 | `forward`, `right`, `bearing`, `describe_position`, `direction_name`, `clock_position`, `look_at`, `random::*` | [math.md](math.md) |
 | `ctx.storage.get`, `get_or`, `set`, `add`, `save`, `load_error`, `Storage::open_encrypted`, `encrypt_save` | [storage.md](storage.md) |
-| `ctx.tr`, `ctx.tr_with`, `ctx.set_language`, `ctx.describe`, `ctx.lang.get`, `format`, `plural`, `set`, `languages`, `name`, `add_text`, `Engine::language`, `Engine::lang_dir` | [lang.md](lang.md) |
+| `ctx.net.host`, `join`, `close`, `kick`, `send`, `send_all`, `send_all_except`, `joined`, `left`, `received`, `messages`, `players`, `name`, `ping`, `id`, `set_name`, `set_version`, `local_ip`, `Packet::*`, `PeerId`, `Reason` | [net.md](net.md) |
+| `ctx.tr`, `ctx.tr_with`, `ctx.set_language`, `ctx.describe`, `ctx.lang.describe_reason`, `ctx.lang.get`, `format`, `plural`, `set`, `languages`, `name`, `add_text`, `Engine::language`, `Engine::lang_dir` | [lang.md](lang.md) |
