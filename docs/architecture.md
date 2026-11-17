@@ -127,6 +127,10 @@ working directory is `/`, so `resolve` and `preload_dir` also try relative names
 creates the voice right away. The mixer skips voices whose slot is not ready yet, so the
 music starts as soon as decoding finishes, without blocking the game.
 
+`Audio::open` tries several output devices in order and keeps the first that starts. On
+Linux and the BSDs it tries ALSA's `pipewire` and `pulse` PCMs before `default`, because on
+some systems `default` points at the hardware (dmix), which the sound server already holds.
+
 If no output device can be opened, `Audio::silent` is used: the receiver is dropped and
 commands go nowhere.
 

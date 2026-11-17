@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Linux: sound works again when ALSA's `default` device points at the hardware that
+  PipeWire or PulseAudio already holds. The engine now tries the `pipewire` and `pulse`
+  ALSA devices first and falls back to the next device if one fails to open.
+
 ## 0.3.0
 
 - Online play (`audio_code::net`, `ctx.net`): `host(port)`, `join(address)` (port optional,

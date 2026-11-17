@@ -127,27 +127,16 @@ impl Audio {
 
     fn open(sound_dir: PathBuf) -> Result<Self> {
         let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .ok_or_else(|| Error::Audio("no output device found".into()))?;
-        let supported = device.default_output_config().map_err(|e| Error::Audio(e.to_string()))?;
-        let format = supported.sample_format();
-        let config: cpal::StreamConfig = supported.into();
-        let rate = config.sample_rate;
-        let (tx, rx) = channel();
-        let mixer = Mixer::new(rx, rate);
-        let stream = match format {
-            SampleFormat::F32 => build_stream::<f32>(&device, config, mixer),
-            SampleFormat::F64 => build_stream::<f64>(&device, config, mixer),
-            SampleFormat::I16 => build_stream::<i16>(&device, config, mixer),
-            SampleFormat::I32 => build_stream::<i32>(&device, config, mixer),
-            SampleFormat::U16 => build_stream::<u16>(&device, config, mixer),
-            SampleFormat::U8 => build_stream::<u8>(&device, config, mixer),
-            SampleFormat::I8 => build_stream::<i8>(&device, config, mixer),
-            other => return Err(Error::Audio(format!("unsupported sample format {other}"))),
-        }?;
-        stream.play().map_err(|e| Error::Audio(e.to_string()))?;
-        Ok(Self::with_parts(tx, Some(stream), rate, sound_dir))
+        let mut devices = sound_server_devices(&host);
+        devices.extend(host.default_output_device());
+        let mut last_error = Error::Audio("no output device found".into());
+        for device in &devices {
+            match open_device(device) {
+                Ok((tx, stream, rate)) => return Ok(Self::with_parts(tx, Some(stream), rate, sound_dir)),
+                Err(e) => last_error = e,
+            }
+        }
+        Err(last_error)
     }
 
     /// Sample rate of the output device in Hz.
@@ -528,6 +517,51 @@ impl Audio {
         }
         let _ = self.tx.send(Command::StopAll { group: Some(group), fade });
     }
+}
+
+/// Opens `device` with its default config and starts the mixer stream on it.
+fn open_device(device: &cpal::Device) -> Result<(Sender<Command>, cpal::Stream, u32)> {
+    let supported = device.default_output_config().map_err(|e| Error::Audio(e.to_string()))?;
+    let format = supported.sample_format();
+    let config: cpal::StreamConfig = supported.into();
+    let rate = config.sample_rate;
+    let (tx, rx) = channel();
+    let mixer = Mixer::new(rx, rate);
+    let stream = match format {
+        SampleFormat::F32 => build_stream::<f32>(device, config, mixer),
+        SampleFormat::F64 => build_stream::<f64>(device, config, mixer),
+        SampleFormat::I16 => build_stream::<i16>(device, config, mixer),
+        SampleFormat::I32 => build_stream::<i32>(device, config, mixer),
+        SampleFormat::U16 => build_stream::<u16>(device, config, mixer),
+        SampleFormat::U8 => build_stream::<u8>(device, config, mixer),
+        SampleFormat::I8 => build_stream::<i8>(device, config, mixer),
+        other => return Err(Error::Audio(format!("unsupported sample format {other}"))),
+    }?;
+    stream.play().map_err(|e| Error::Audio(e.to_string()))?;
+    Ok((tx, stream, rate))
+}
+
+/// The ALSA plugins of PipeWire and PulseAudio, tried before ALSA's `default` PCM. On some
+/// systems `default` points at the hardware (dmix), which the sound server already holds, so
+/// opening it fails with "device busy" or plays nothing.
+#[cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd"))]
+fn sound_server_devices(host: &cpal::Host) -> Vec<cpal::Device> {
+    let Ok(devices) = host.output_devices() else {
+        return Vec::new();
+    };
+    let mut devices: Vec<cpal::Device> = devices.collect();
+    let mut found = Vec::new();
+    for name in ["pipewire", "pulse"] {
+        if let Some(i) = devices.iter().position(|d| d.id().is_ok_and(|id| id.id() == name)) {
+            found.push(devices.swap_remove(i));
+        }
+    }
+    found
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd")))]
+fn sound_server_devices(_host: &cpal::Host) -> Vec<cpal::Device> {
+    Vec::new()
 }
 
 fn build_stream<T>(device: &cpal::Device, config: cpal::StreamConfig, mut mixer: Mixer) -> Result<cpal::Stream>
